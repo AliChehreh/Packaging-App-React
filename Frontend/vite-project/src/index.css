@@ -1,0 +1,17 @@
+/* Reset the Vite starter constraints */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+#root {
+  max-width: none;
+  padding: 0;
+  text-align: left;
+}
+
+/* Make AntD layout fill the screen nicely */
+* { box-sizing: border-box; }
+.ant-layout { min-height: 100vh; }
+
+/* Optional: subtle app background */
+body { background: #c3c3c3; }
