@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from backend.core.config import get_settings
 from backend.api import orders , cartons, packs, health
-
 settings = get_settings()
 
 app = FastAPI(title="Packaging App Backend")
