@@ -146,6 +146,7 @@ def get_pack_snapshot(db: Session, pack_id: int) -> Dict:
         )
 
     header = {
+        "pack_id": pack.id,
         "order_no": order.order_no,
         "customer_name": order.customer_name,
         "ship_to": order.ship_to,

@@ -37,3 +37,8 @@ export async function adjustInventory(id, delta) {
   if (!res.ok) throw new Error(`Adjust failed: ${res.status}`);
   return res.json();
 }
+export async function listCartonTypes() {
+  const res = await fetch("http://localhost:8000/api/cartons");
+  if (!res.ok) throw new Error("Failed to fetch carton types");
+  return await res.json();
+}

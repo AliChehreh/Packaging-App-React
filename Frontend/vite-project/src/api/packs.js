@@ -13,8 +13,8 @@ export async function getPackSnapshot(packId) {
   return res.data;
 }
 
-export async function createBox(packId, body) {
-  const res = await axios.post(`${API_BASE}/pack/${packId}/boxes`, body);
+export async function createBox(packId, body = {}) {
+  const res = await axios.post(`http://localhost:8000/api/pack/${packId}/boxes`, body);
   return res.data;
 }
 
