@@ -22,3 +22,19 @@ export async function completePack(packId) {
   const res = await axios.post(`${API_BASE}/pack/${packId}/complete`);
   return res.data;
 }
+
+export async function assignOne(packId, boxId, orderLineId) {
+  const res = await axios.post(
+    `http://localhost:8000/api/pack/${packId}/assign-one`,
+    { box_id: boxId, order_line_id: orderLineId }
+  );
+  return res.data;
+}
+
+export async function setQty(packId, boxId, orderLineId, qty) {
+  const res = await axios.post(
+    `http://localhost:8000/api/pack/${packId}/set-qty`,
+    { box_id: boxId, order_line_id: orderLineId, qty }
+  );
+  return res.data;
+}

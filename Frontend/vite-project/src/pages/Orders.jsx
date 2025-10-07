@@ -20,6 +20,8 @@ import {
   getPackSnapshot,
   createBox,
   completePack,
+  assignOne,
+  setQty,
 } from "../api/packs";
 import { listCartonTypes } from "../api/cartons";
 
@@ -145,6 +147,7 @@ export default function Orders() {
   const [loading, setLoading] = useState(false);
   const [oesData, setOesData] = useState(null);
   const [pack, setPack] = useState(null);
+  const [activeBoxId, setActiveBoxId] = useState(null);
   const [showAddBoxModal, setShowAddBoxModal] = useState(false);
 
   async function handleScan(value) {
@@ -248,6 +251,7 @@ export default function Orders() {
   if (mode === "pack") {
     const packId = pack.header.pack_id;
 
+
     async function handleCompletePack() {
       try {
         await completePack(packId);
@@ -255,10 +259,30 @@ export default function Orders() {
         const snap = await getPackSnapshot(packId);
         setPack(snap);
       } catch (err) {
-        message.error(
-          err.response?.data?.detail || "Failed to complete pack"
-        );
+        message.error(err.response?.data?.detail || "Failed to complete pack");
       }
+    }
+
+    async function handleAssignQty(lineId, remaining) {
+      if (!activeBoxId) {
+        message.info("Select a box first");
+        return;
+      }
+      const qty = Number(prompt(`Assign how many? (max ${remaining})`, remaining));
+      if (!qty || qty <= 0) return;
+      try {
+        await setQty(packId, activeBoxId, lineId, qty);
+        message.success(`Assigned ${qty} pcs`);
+        const snap = await getPackSnapshot(packId);
+        setPack(snap);
+      } catch (err) {
+        message.error(err.response?.data?.detail || "Assignment failed");
+      }
+    }
+
+    async function refreshSnapshot() {
+      const snap = await getPackSnapshot(packId);
+      setPack(snap);
     }
 
     return (
@@ -281,19 +305,33 @@ export default function Orders() {
         </Card>
 
         <div style={{ display: "flex", gap: 16, marginTop: 16 }}>
-          {/* LEFT: Lines */}
+          {/* LEFT: Order Lines */}
           <Card title="Order Lines" style={{ flex: 1 }}>
             <Table
               size="small"
               rowKey={(r) => r.id}
               dataSource={pack.lines}
-              columns={[
-                { title: "Product", dataIndex: "product_code" },
-                { title: "Remaining", dataIndex: "remaining" },
-                { title: "Packed", dataIndex: "packed_qty" },
-              ]}
               pagination={false}
-            />
+            >
+              <Table.Column title="Product" dataIndex="product_code" />
+              <Table.Column title="Remaining" dataIndex="remaining" />
+              <Table.Column title="Packed" dataIndex="packed_qty" />
+              <Table.Column
+                title="Action"
+                render={(_, record) => (
+                  <Button
+                    size="small"
+                    type="default"
+                    onClick={() =>
+                      handleAssignQty(record.id, record.remaining)
+                    }
+                    disabled={record.remaining <= 0}
+                  >
+                    Assign
+                  </Button>
+                )}
+              />
+            </Table>
           </Card>
 
           {/* RIGHT: Boxes */}
@@ -320,7 +358,15 @@ export default function Orders() {
                   key={b.id}
                   size="small"
                   title={b.label}
-                  style={{ marginBottom: 8 }}
+                  style={{
+                    marginBottom: 8,
+                    border:
+                      activeBoxId === b.id
+                        ? "2px solid #1677ff"
+                        : "1px solid #f0f0f0",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => setActiveBoxId(b.id)}
                 >
                   {b.items.length === 0 ? (
                     <i>Empty box</i>
@@ -337,14 +383,12 @@ export default function Orders() {
           </Card>
         </div>
 
+        {/* Add Box Modal */}
         <AddBoxModal
           visible={showAddBoxModal}
           onClose={() => setShowAddBoxModal(false)}
           packId={pack.header.pack_id}
-          onBoxAdded={async () => {
-            const snap = await getPackSnapshot(pack.header.pack_id);
-            setPack(snap);
-          }}
+          onBoxAdded={refreshSnapshot}
         />
       </div>
     );

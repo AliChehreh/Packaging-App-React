@@ -161,39 +161,216 @@ def get_pack_snapshot(db: Session, pack_id: int) -> Dict:
 # ---------------------------------------------------------------------
 # Pack completion integrity check
 # ---------------------------------------------------------------------
-def complete_pack(db: Session, pack_id: int) -> None:
+
+def complete_pack(db: Session, pack_id: int):
+    """
+    Validate all order lines fully packed before marking complete.
+    """
     pack = db.get(models.Pack, pack_id)
     if not pack:
         raise ValueError("Pack not found")
 
-    if pack.status == "complete":
-        raise ValueError("Pack already complete")
+    # Retrieve all order lines for this order
+    order_lines = (
+        db.query(models.OrderLine)
+        .filter(models.OrderLine.order_id == pack.order_id)
+        .all()
+    )
 
-    order = pack.order
-    if not order:
-        raise ValueError("Order not found for this pack")
-
-    packed_stmt = (
-        select(
-            models.PackBoxItem.order_line_id,
-            func.coalesce(func.sum(models.PackBoxItem.qty), 0).label("packed_qty"),
+    # Iterate through each line and verify totals
+    for line in order_lines:
+        stmt = (
+            select(func.coalesce(func.sum(models.PackBoxItem.qty), 0))
+            .join(models.PackBox, models.PackBox.id == models.PackBoxItem.pack_box_id)
+            .where(
+                models.PackBox.pack_id == pack_id,
+                models.PackBoxItem.order_line_id == line.id,
+            )
         )
-        .join(models.PackBox, models.PackBox.id == models.PackBoxItem.pack_box_id)
-        .where(models.PackBox.pack_id == pack_id)
+        packed_qty = int(db.execute(stmt).scalar_one() or 0)
+        ordered_qty = int(line.qty_ordered or 0)
+
+        if packed_qty < ordered_qty:
+            raise ValueError(
+                f"Cannot complete pack: underpacked line {line.product_code} ({packed_qty}/{ordered_qty})"
+            )
+        elif packed_qty > ordered_qty:
+            raise ValueError(
+                f"Cannot complete pack: overpacked line {line.product_code} ({packed_qty}/{ordered_qty})"
+            )
+
+    # All lines perfectly packed → mark complete
+    pack.status = "complete"
+    db.commit()
+    return {"message": "Pack marked complete"}
+
+# ---------------------------------------------------------------------------
+# Pair Rule enforcement helpers
+# ---------------------------------------------------------------------------
+
+def _box_distinct_line_ids(db: Session, box_id: int) -> list[int]:
+    """Return distinct order_line_ids currently in this box."""
+    stmt = (
+        select(models.PackBoxItem.order_line_id)
+        .where(models.PackBoxItem.pack_box_id == box_id)
         .group_by(models.PackBoxItem.order_line_id)
     )
-    packed_map = {int(r.order_line_id): int(r.packed_qty or 0) for r in db.execute(packed_stmt)}
+    return [int(r[0]) for r in db.execute(stmt).all()]
 
-    incomplete: List[str] = []
-    for line in db.execute(select(models.OrderLine).where(models.OrderLine.order_id == order.id)).scalars():
-        ordered = int(line.qty_ordered or 0)
-        packed = packed_map.get(line.id, 0)
-        if packed != ordered:
-            incomplete.append(f"{line.product_code} ({packed}/{ordered})")
 
-    if incomplete:
-        msg = "; ".join(incomplete[:5])
-        raise ValueError(f"Pack incomplete: {msg}")
+def _box_id_with_pair_elsewhere(db: Session, pack_id: int, exclude_box_id: int,
+                                a_line_id: int, b_line_id: int) -> int | None:
+    """Return another box_id in this pack (≠ exclude_box_id) that already contains both lines."""
+    stmt = (
+        select(models.PackBoxItem.pack_box_id)
+        .join(models.PackBox, models.PackBox.id == models.PackBoxItem.pack_box_id)
+        .where(
+            models.PackBox.pack_id == pack_id,
+            models.PackBoxItem.order_line_id.in_([a_line_id, b_line_id])
+        )
+        .group_by(models.PackBoxItem.pack_box_id)
+        .having(func.count(func.distinct(models.PackBoxItem.order_line_id)) == 2)
+    )
+    for row in db.execute(stmt):
+        box_id = int(row._mapping.get("pack_box_id", row[0]))
+        if box_id != exclude_box_id:
+            return box_id
+    return None
 
-    pack.status = "complete"
+
+def _enforce_pair_rule_on_add(db: Session, pack_id: int, dest_box_id: int, new_line_id: int) -> None:
+    """
+    Enforce the 'pair rule' when adding a new line to a box:
+    Any two order lines can co-occur together in at most one box per order.
+    """
+    present_line_ids = _box_distinct_line_ids(db, dest_box_id)
+    if not present_line_ids:
+        return
+
+    pack = db.get(models.Pack, pack_id)
+    if not pack:
+        raise ValueError("Pack not found")
+    order_id = int(pack.order_id)
+
+    for existing_line_id in present_line_ids:
+        if existing_line_id == new_line_id:
+            continue
+
+        # Check if this pair already co-exists elsewhere
+        other_box_id = _box_id_with_pair_elsewhere(
+            db, pack_id, dest_box_id, existing_line_id, new_line_id
+        )
+        if other_box_id is not None:
+            a_line = db.get(models.OrderLine, existing_line_id)
+            b_line = db.get(models.OrderLine, new_line_id)
+            a_code = a_line.product_code if a_line else str(existing_line_id)
+            b_code = b_line.product_code if b_line else str(new_line_id)
+            raise ValueError(
+                f"Pair rule: {a_code} + {b_code} already together in Box #{other_box_id}"
+            )
+        # Record the new pair in pair_guard table (idempotent)
+        try:
+            a, b = sorted((int(existing_line_id), int(new_line_id)))
+            db.add(models.PairGuard(order_id=order_id, line_a_id=a, line_b_id=b))
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            # already recorded; ignore
+
+
+def assign_one(db: Session, pack_id: int, order_line_id: int, box_id: int) -> None:
+    """
+    Adds one unit of a line to a box.
+    Checks remaining quantity, pair rule, and updates pack snapshot.
+    """
+    pack = db.get(models.Pack, pack_id)
+    if not pack:
+        raise ValueError("Pack not found")
+
+    line = db.get(models.OrderLine, order_line_id)
+    if not line:
+        raise ValueError("Order line not found")
+
+    # --- total packed so far for this line across all boxes ---
+    q_stmt = (
+        select(func.coalesce(func.sum(models.PackBoxItem.qty), 0))
+        .join(models.PackBox, models.PackBox.id == models.PackBoxItem.pack_box_id)
+        .where(
+            models.PackBox.pack_id == pack_id,
+            models.PackBoxItem.order_line_id == order_line_id,
+        )
+    )
+    packed_qty = db.execute(q_stmt).scalar_one()
+    if packed_qty >= line.qty_ordered:
+        raise ValueError("No remaining quantity to pack")
+
+    # --- enforce pair rule (new line into this box) ---
+    _enforce_pair_rule_on_add(db, pack_id, box_id, order_line_id)
+
+    # --- upsert item (increase by 1) ---
+    existing = (
+        db.query(models.PackBoxItem)
+        .filter_by(pack_box_id=box_id, order_line_id=order_line_id)
+        .first()
+    )
+    if existing:
+        existing.qty += 1
+    else:
+        db.add(models.PackBoxItem(pack_box_id=box_id, order_line_id=order_line_id, qty=1))
+
+    db.commit()
+
+
+def set_qty(db: Session, pack_id: int, box_id: int, order_line_id: int, qty: int) -> None:
+    """
+    Explicitly sets the quantity of a line in a box.
+    Enforces remaining total ≤ ordered, and pair rule.
+    """
+    if qty < 0:
+        raise ValueError("Quantity cannot be negative")
+
+    pack = db.get(models.Pack, pack_id)
+    if not pack:
+        raise ValueError("Pack not found")
+
+    line = db.get(models.OrderLine, order_line_id)
+    if not line:
+        raise ValueError("Order line not found")
+
+    # --- total packed in other boxes (excluding current) ---
+    total_elsewhere = (
+        select(func.coalesce(func.sum(models.PackBoxItem.qty), 0))
+        .join(models.PackBox, models.PackBox.id == models.PackBoxItem.pack_box_id)
+        .where(
+            models.PackBox.pack_id == pack_id,
+            models.PackBoxItem.order_line_id == order_line_id,
+            models.PackBoxItem.pack_box_id != box_id,
+        )
+    )
+    already_packed_elsewhere = db.execute(total_elsewhere).scalar_one()
+    remaining_allowed = int(line.qty_ordered) - int(already_packed_elsewhere)
+
+    if qty > remaining_allowed:
+        raise ValueError(
+            f"Overpacking not allowed: remaining {remaining_allowed}, tried {qty}"
+        )
+
+    # --- enforce pair rule before applying change ---
+    _enforce_pair_rule_on_add(db, pack_id, box_id, order_line_id)
+
+    # --- upsert item ---
+    existing = (
+        db.query(models.PackBoxItem)
+        .filter_by(pack_box_id=box_id, order_line_id=order_line_id)
+        .first()
+    )
+    if qty == 0:
+        # delete if setting to zero
+        if existing:
+            db.delete(existing)
+    elif existing:
+        existing.qty = qty
+    else:
+        db.add(models.PackBoxItem(pack_box_id=box_id, order_line_id=order_line_id, qty=qty))
+
     db.commit()

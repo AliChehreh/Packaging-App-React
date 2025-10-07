@@ -148,3 +148,39 @@ def complete_pack(pack_id: int, db: Session = Depends(get_db)):
         return {"status": "complete"}
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+# ---------------------------------------------------------------------
+# Assign item to box
+# ---------------------------------------------------------------------
+@router.post("/{pack_id}/assign-one")
+def assign_one(pack_id: int, body: dict, db: Session = Depends(get_db)):
+    """
+    Add one unit of a specific order line into a given box.
+    Enforces remaining qty and pair rule.
+    """
+    try:
+        order_line_id = body.get("order_line_id")
+        box_id = body.get("box_id")
+        if not order_line_id or not box_id:
+            raise HTTPException(400, "Missing order_line_id or box_id")
+        pack_view.assign_one(db, pack_id, order_line_id, box_id)
+        return {"message": "1 unit assigned"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{pack_id}/set-qty")
+def set_qty(pack_id: int, body: dict, db: Session = Depends(get_db)):
+    """
+    Explicitly set the quantity of an order line inside a box.
+    """
+    try:
+        order_line_id = body.get("order_line_id")
+        box_id = body.get("box_id")
+        qty = body.get("qty")
+        if not order_line_id or not box_id or qty is None:
+            raise HTTPException(400, "Missing required fields")
+        pack_view.set_qty(db, pack_id, box_id, order_line_id, int(qty))
+        return {"message": f"Quantity set to {qty}"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
