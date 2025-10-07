@@ -111,56 +111,106 @@ export default function Orders() {
   }
 
   // --- Pack Mode ---
-  if (mode === "pack") {
-    return (
-      <div style={{ padding: 24 }}>
-        <Card
-          title={`Packing Order #${pack.header.order_no}`}
-          extra={<Button onClick={() => setMode("scan")}>New Order</Button>}
-        >
-          <p>
-            Customer: <b>{pack.header.customer_name}</b> | Status:{" "}
-            <b>{pack.header.status}</b>
-          </p>
+// --- Pack Mode ---
+if (mode === "pack") {
+  const packId = pack?.header?.pack_id || pack?.id; // handle both shapes safely
+
+  async function handleAddBox() {
+    try {
+      const res = await createBox(packId, {}); // no args -> default empty box
+      message.success(`Box #${res.box_no} created`);
+      const snap = await getPackSnapshot(packId);
+      setPack(snap);
+    } catch (err) {
+      message.error(err.response?.data?.detail || "Failed to create box");
+    }
+  }
+
+  async function handleCompletePack() {
+    try {
+      await completePack(packId);
+      message.success("Pack marked as complete");
+      const snap = await getPackSnapshot(packId);
+      setPack(snap);
+    } catch (err) {
+      message.error(err.response?.data?.detail || "Failed to complete pack");
+    }
+  }
+
+  return (
+    <div style={{ padding: 24 }}>
+      <Card
+        title={`Packing Order #${pack.header.order_no}`}
+        extra={
+          <Space>
+            <Button onClick={() => setMode("scan")}>New Order</Button>
+            <Button type="primary" danger onClick={handleCompletePack}>
+              Complete Pack
+            </Button>
+          </Space>
+        }
+      >
+        <p>
+          Customer: <b>{pack.header.customer_name}</b> | Status:{" "}
+          <b>{pack.header.status}</b>
+        </p>
+      </Card>
+
+      <div style={{ display: "flex", gap: 16, marginTop: 16 }}>
+        {/* LEFT: Lines */}
+        <Card title="Order Lines" style={{ flex: 1 }}>
+          <Table
+            size="small"
+            rowKey={(r) => r.id}
+            dataSource={pack.lines}
+            columns={[
+              { title: "Product", dataIndex: "product_code" },
+              { title: "Remaining", dataIndex: "remaining" },
+              { title: "Packed", dataIndex: "packed_qty" },
+            ]}
+            pagination={false}
+          />
         </Card>
 
-        <div style={{ display: "flex", gap: 16, marginTop: 16 }}>
-          <Card title="Order Lines" style={{ flex: 1 }}>
-            <Table
-              size="small"
-              rowKey={(r) => r.id}
-              dataSource={pack.lines}
-              columns={[
-                { title: "Product", dataIndex: "product_code" },
-                { title: "Remaining", dataIndex: "remaining" },
-              ]}
-              pagination={false}
-            />
-          </Card>
-
-          <Card title="Boxes" style={{ flex: 1 }}>
-            {pack.boxes.length === 0 ? (
-              <p>No boxes yet.</p>
-            ) : (
-              pack.boxes.map((b) => (
-                <Card key={b.id} size="small" title={b.label} style={{ marginBottom: 8 }}>
-                  {b.items.length === 0 ? (
-                    <i>Empty box</i>
-                  ) : (
-                    b.items.map((it) => (
-                      <p key={it.id}>
-                        {it.product_code} × {it.qty}
-                      </p>
-                    ))
-                  )}
-                </Card>
-              ))
-            )}
-          </Card>
-        </div>
+        {/* RIGHT: Boxes */}
+        <Card
+          title={
+            <Space>
+              Boxes
+              <Button type="primary" size="small" onClick={handleAddBox}>
+                + Add Box
+              </Button>
+            </Space>
+          }
+          style={{ flex: 1 }}
+        >
+          {pack.boxes.length === 0 ? (
+            <p>No boxes yet.</p>
+          ) : (
+            pack.boxes.map((b) => (
+              <Card
+                key={b.id}
+                size="small"
+                title={b.label}
+                style={{ marginBottom: 8 }}
+              >
+                {b.items.length === 0 ? (
+                  <i>Empty box</i>
+                ) : (
+                  b.items.map((it) => (
+                    <p key={it.id}>
+                      {it.product_code} × {it.qty}
+                    </p>
+                  ))
+                )}
+              </Card>
+            ))
+          )}
+        </Card>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
   return null;
 }
