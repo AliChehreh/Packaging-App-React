@@ -72,7 +72,7 @@ def start_pack(payload: dict, db: Session = Depends(get_db)):
     # 3. Reuse or create pack
     pack = (
         db.query(models.Pack)
-        .filter(models.Pack.order_id == order.id, models.Pack.status == "in_progress")
+        .filter(models.Pack.order_id == order.id)
         .first()
     )
     if not pack:

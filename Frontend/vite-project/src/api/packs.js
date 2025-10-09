@@ -20,7 +20,7 @@ export async function createBox(packId, body = {}) {
 
 export async function completePack(packId) {
   try {
-    const response = await axios.post(`/api/pack/${packId}/complete`);
+    const response = await axios.post(`${API_BASE}/pack/${packId}/complete`);
     return response.data;
   } catch (error) {
     // ✅ Handle backend validation errors cleanly
@@ -60,7 +60,7 @@ export async function setQty(packId, boxId, orderLineId, qty) {
 export async function setBoxWeight(packId, boxId, weight) {
   try {
     const body = { weight: weight ?? null };
-    const response = await axios.post(`/api/pack/${packId}/boxes/${boxId}/weight`, body);
+    const response = await axios.post(`${API_BASE}/pack/${packId}/boxes/${boxId}/weight`, body);
     return response.data;
   } catch (error) {
     const msg =
