@@ -250,18 +250,31 @@ export default function Orders() {
   /* ---------------------- Pack Mode ---------------------- */
   if (mode === "pack") {
     const packId = pack.header.pack_id;
-
-
     async function handleCompletePack() {
       try {
-        await completePack(packId);
-        message.success("Pack marked as complete");
-        const snap = await getPackSnapshot(packId);
-        setPack(snap);
+        message.loading({ content: "Completing pack...", key: "complete" });
+        const data = await completePack(packId);
+        message.success({
+          content: data.message || "Pack marked complete",
+          key: "complete",
+          duration: 2,
+        });
+        setPack(data); // ✅ backend returns updated snapshot
       } catch (err) {
-        message.error(err.response?.data?.detail || "Failed to complete pack");
+        // ✅ Show readable validation message (e.g., missing weight)
+        message.error({
+          content: err.message || "Cannot complete pack",
+          key: "complete",
+          duration: 3,
+        });
       }
     }
+
+    // ✅ Disable completion until all boxes have weight_lbs
+    const allBoxesWeighted =
+      pack.boxes.length > 0 && pack.boxes.every((b) => b.weight_lbs !== null);
+
+    // (Remove this duplicate block; the correct rendering is below)
 
     async function handleAssignQty(lineId, remaining) {
       if (!activeBoxId) {

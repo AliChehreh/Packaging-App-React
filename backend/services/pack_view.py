@@ -1,5 +1,6 @@
 from __future__ import annotations
-from math import ceil
+import math
+
 from typing import Dict, List, Optional
 
 from sqlalchemy import select, func
@@ -47,6 +48,7 @@ def get_pack_snapshot(db: Session, pack_id: int) -> Dict:
         .where(models.OrderLine.order_id == order.id)
         .order_by(models.OrderLine.product_code)
     )
+
     lines = []
     for row in db.execute(line_stmt).all():
         m = row._mapping
@@ -71,22 +73,27 @@ def get_pack_snapshot(db: Session, pack_id: int) -> Dict:
             models.PackBox.id,
             models.PackBox.box_no,
             models.PackBox.weight_lbs,
+            models.PackBox.weight_entered,  # ✅ NEW FIELD: raw input value
             models.PackBox.custom_l_in,
             models.PackBox.custom_w_in,
             models.PackBox.custom_h_in,
             models.PackBox.carton_type_id,
+            models.PackBox.max_weight_lb,  # ✅ NEW: store per-box override (if exists)
             models.CartonType.length_in.label("ct_length_in"),
             models.CartonType.width_in.label("ct_width_in"),
             models.CartonType.height_in.label("ct_height_in"),
             models.CartonType.name.label("ct_name"),
+            models.CartonType.max_weight_lb.label("ct_max_weight_lb"),  # ✅ NEW: carton max
         )
         .outerjoin(models.CartonType, models.CartonType.id == models.PackBox.carton_type_id)
         .where(models.PackBox.pack_id == pack_id)
         .order_by(func.coalesce(models.PackBox.box_no, 2147483647), models.PackBox.id)
     )
+
     box_rows = db.execute(box_stmt).all()
     box_ids = [int(r._mapping["id"]) for r in box_rows]
 
+    # --- Items grouped by box ---
     items_by_box: Dict[int, List[Dict]] = {bid: [] for bid in box_ids}
     if box_ids:
         item_stmt = (
@@ -111,6 +118,7 @@ def get_pack_snapshot(db: Session, pack_id: int) -> Dict:
                 }
             )
 
+    # --- Build box list ---
     boxes = []
     for b in box_rows:
         bm = b._mapping
@@ -136,15 +144,18 @@ def get_pack_snapshot(db: Session, pack_id: int) -> Dict:
                 "box_no": bm["box_no"],
                 "label": label,
                 "weight_lbs": bm["weight_lbs"],
+                "weight_entered": float(bm["weight_entered"]) if bm["weight_entered"] is not None else None,  # ✅ include decimal
                 "carton_type_id": bm["carton_type_id"],
                 "carton_name": bm["ct_name"],
                 "custom_l_in": Lc,
                 "custom_w_in": Wc,
                 "custom_h_in": Hc,
+                "max_weight_lb": bm["max_weight_lb"] or bm["ct_max_weight_lb"],  # ✅ combined ceiling
                 "items": items_by_box.get(bm["id"], []),
             }
         )
 
+    # --- Header ---
     header = {
         "pack_id": pack.id,
         "order_no": order.order_no,
@@ -158,26 +169,35 @@ def get_pack_snapshot(db: Session, pack_id: int) -> Dict:
     return {"header": header, "lines": lines, "boxes": boxes}
 
 
+
 # ---------------------------------------------------------------------
 # Pack completion integrity check
 # ---------------------------------------------------------------------
 
 def complete_pack(db: Session, pack_id: int):
     """
-    Validate all order lines fully packed before marking complete.
+    Validate that:
+      1. Every box in the pack has a recorded weight.
+      2. Every order line is fully packed (no under/overpack).
+    Then mark the pack as complete.
     """
     pack = db.get(models.Pack, pack_id)
     if not pack:
         raise ValueError("Pack not found")
 
-    # Retrieve all order lines for this order
+    # ✅ 1. Ensure all boxes have recorded weights
+    for box in pack.boxes:
+        if box.weight_lbs is None:
+            box_label = f"Box {box.box_no or box.id}"
+            raise ValueError(f"Cannot complete pack: {box_label} has no recorded weight")
+
+    # ✅ 2. Verify all order lines are fully packed
     order_lines = (
         db.query(models.OrderLine)
         .filter(models.OrderLine.order_id == pack.order_id)
         .all()
     )
 
-    # Iterate through each line and verify totals
     for line in order_lines:
         stmt = (
             select(func.coalesce(func.sum(models.PackBoxItem.qty), 0))
@@ -192,17 +212,20 @@ def complete_pack(db: Session, pack_id: int):
 
         if packed_qty < ordered_qty:
             raise ValueError(
-                f"Cannot complete pack: underpacked line {line.product_code} ({packed_qty}/{ordered_qty})"
+                f"Cannot complete pack: underpacked line {line.product_code} "
+                f"({packed_qty}/{ordered_qty})"
             )
         elif packed_qty > ordered_qty:
             raise ValueError(
-                f"Cannot complete pack: overpacked line {line.product_code} ({packed_qty}/{ordered_qty})"
+                f"Cannot complete pack: overpacked line {line.product_code} "
+                f"({packed_qty}/{ordered_qty})"
             )
 
-    # All lines perfectly packed → mark complete
+    # ✅ 3. All validations passed → mark complete
     pack.status = "complete"
     db.commit()
     return {"message": "Pack marked complete"}
+
 
 # ---------------------------------------------------------------------------
 # Pair Rule enforcement helpers
@@ -372,5 +395,45 @@ def set_qty(db: Session, pack_id: int, box_id: int, order_line_id: int, qty: int
         existing.qty = qty
     else:
         db.add(models.PackBoxItem(pack_box_id=box_id, order_line_id=order_line_id, qty=qty))
+
+    db.commit()
+
+def validate_box_weight(weight_entered: float, max_weight: int | None) -> int:
+    if weight_entered is None:
+        raise ValueError("Weight must be provided")
+    if weight_entered <= 0:
+        raise ValueError("Weight must be positive")
+    if weight_entered > 500:
+        raise ValueError("Weight exceeds plausible limit")
+    weight_lbs = math.ceil(weight_entered)
+    if max_weight and weight_lbs > max_weight:
+        raise ValueError(f"Box overweight ({weight_lbs} lb > limit {max_weight} lb)")
+    return weight_lbs
+
+def set_box_weight(db: Session, pack_id: int, box_id: int, weight: float | None) -> None:
+    pack = db.get(models.Pack, pack_id)
+    if not pack:
+        raise ValueError("Pack not found")
+
+    box = db.get(models.PackBox, box_id)
+    if not box or box.pack_id != pack_id:
+        raise ValueError("Box not found in this pack")
+
+    # Determine max allowed weight
+    # Use per-box override first; otherwise fall back to the carton type’s max weight.
+    limit = None
+    if box.max_weight_lb:
+        limit = box.max_weight_lb
+    elif box.carton and box.carton.max_weight_lb:
+        limit = box.carton.max_weight_lb
+
+    # If weight is None, clear both fields
+    if weight is None:
+        box.weight_entered = None
+        box.weight_lbs = None
+    else:
+        weight_lbs = validate_box_weight(weight, limit)
+        box.weight_entered = weight
+        box.weight_lbs = weight_lbs
 
     db.commit()

@@ -127,6 +127,7 @@ class PackBox(Base):
     custom_h_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
     weight_lbs: Mapped[int | None] = mapped_column(Integer, nullable=True)  # store rounded up
     max_weight_lb: Mapped[int | None] = mapped_column(Integer, nullable=True)  # per-box limit (override)
+    weight_entered: Mapped[float | None] = mapped_column(Float, nullable=True)  # actual weight entered by user
 
     # relations
     pack: Mapped["Pack"] = relationship(

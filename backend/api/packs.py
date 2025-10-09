@@ -142,12 +142,35 @@ def create_box(pack_id: int, body: CreateBoxIn, db: Session = Depends(get_db)):
 # Mark pack complete
 # ---------------------------------------------------------------------
 @router.post("/{pack_id}/complete")
-def complete_pack(pack_id: int, db: Session = Depends(get_db)):
+def complete_pack(
+    pack_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Finalize a packing session.
+    Ensures all boxes have recorded weights and every order line is fully packed.
+    Returns the updated pack snapshot or an error message if validation fails.
+    """
     try:
-        pack_view.complete_pack(db, pack_id)
-        return {"status": "complete"}
+        result = pack_view.complete_pack(db, pack_id)
+        # Return the updated snapshot so the UI refreshes immediately
+        snapshot = pack_view.get_pack_snapshot(db, pack_id)
+        snapshot["message"] = result["message"]
+        return snapshot
+
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        # ✅ Clean JSON error for frontend display
+        raise HTTPException(
+            status_code=400,
+            detail={"error": str(e)}
+        )
+
+    except Exception as e:
+        # Generic fallback for unexpected errors
+        raise HTTPException(
+            status_code=500,
+            detail={"error": f"Unexpected server error: {str(e)}"}
+        )
 
 # ---------------------------------------------------------------------
 # Assign item to box
@@ -182,5 +205,25 @@ def set_qty(pack_id: int, body: dict, db: Session = Depends(get_db)):
             raise HTTPException(400, "Missing required fields")
         pack_view.set_qty(db, pack_id, box_id, order_line_id, int(qty))
         return {"message": f"Quantity set to {qty}"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/{pack_id}/boxes/{box_id}/weight")
+def set_box_weight(
+    pack_id: int,
+    box_id: int,
+    body: dict,
+    db: Session = Depends(get_db),
+):
+    """
+    Set (or clear) the weight of a specific box.
+    Body can be {"weight": float} or {"weight": null}
+    Returns the updated pack snapshot.
+    """
+    weight = body.get("weight")
+    try:
+        pack_view.set_box_weight(db, pack_id, box_id, weight)
+        # Return the updated snapshot so the UI refreshes
+        return pack_view.get_pack_snapshot(db, pack_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
