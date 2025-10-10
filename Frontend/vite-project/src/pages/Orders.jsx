@@ -1,5 +1,5 @@
-// src/pages/Orders.jsx — Stable + Weight Edit Fix
-import { useState, useEffect } from "react";
+// src/pages/Orders.jsx — use Ant Design Collapse for Boxes
+import { useState, useEffect, useCallback } from "react";
 import {
   Input,
   Button,
@@ -13,14 +13,14 @@ import {
   InputNumber,
   Radio,
   Select,
+  Collapse,
 } from "antd";
 import {
   DeleteOutlined,
-  DownOutlined,
   MinusCircleOutlined,
 } from "@ant-design/icons";
-import { motion, AnimatePresence } from "framer-motion";
 
+import { motion, AnimatePresence } from "framer-motion";
 import { getOesOrder } from "../api/orders";
 import {
   startPack,
@@ -29,10 +29,11 @@ import {
   completePack,
   assignOne,
   setBoxWeight,
+  deleteBox,
+  removeItemFromBox,
 } from "../api/packs";
 import { listCartonTypes } from "../api/cartons";
 
-/* ---------------------- AddBoxModal ---------------------- */
 function AddBoxModal({ visible, onClose, packId, onBoxAdded }) {
   const [form] = Form.useForm();
   const [mode, setMode] = useState("custom");
@@ -60,7 +61,7 @@ function AddBoxModal({ visible, onClose, packId, onBoxAdded }) {
 
       const res = await createBox(packId, body);
       message.success("Box created");
-      await onBoxAdded(res.id); // auto-select newly added box
+      await onBoxAdded(res.id);
       form.resetFields();
       setMode("custom");
       onClose();
@@ -124,7 +125,6 @@ function AddBoxModal({ visible, onClose, packId, onBoxAdded }) {
   );
 }
 
-/* ---------------------- Orders Page ---------------------- */
 export default function Orders() {
   const [mode, setMode] = useState("scan");
   const [orderNo, setOrderNo] = useState("");
@@ -133,7 +133,26 @@ export default function Orders() {
   const [pack, setPack] = useState(null);
   const [activeBoxId, setActiveBoxId] = useState(null);
   const [showAddBoxModal, setShowAddBoxModal] = useState(false);
-  const [openBoxes, setOpenBoxes] = useState([]);
+
+  const handleDeleteBox = useCallback(async (boxId) => {
+    try {
+      const snap = await deleteBox(pack.header.pack_id, boxId);
+      setPack(snap);
+      message.success("Box deleted");
+    } catch (err) {
+      message.error(err.message);
+    }
+  }, [pack]);
+
+  const handleRemoveItem = useCallback(async (boxId, orderLineId, qty = 1) => {
+    try {
+      const snap = await removeItemFromBox(pack.header.pack_id, boxId, orderLineId, qty);
+      setPack(snap);
+      message.success("Item removed");
+    } catch (err) {
+      message.error(err.message);
+    }
+  }, [pack]);
 
   async function handleScan(value) {
     if (!value) return;
@@ -222,7 +241,7 @@ export default function Orders() {
       if (remaining <= 0) return message.info("Nothing left to assign");
 
       try {
-        await assignOne(packId, activeBoxId, lineId); // ✅ correct order
+        await assignOne(packId, activeBoxId, lineId);
         message.success("1 unit assigned");
         const snap = await getPackSnapshot(packId);
         setPack(snap);
@@ -272,56 +291,59 @@ export default function Orders() {
             </Table>
           </Card>
 
-          <Card title={<Space>Boxes<Button type="primary" size="small" onClick={() => setShowAddBoxModal(true)} disabled={isComplete}>+ Add Box</Button></Space>} style={{ flex: 1 }}>
-            {pack.boxes.length === 0 ? (<p>No boxes yet.</p>) : pack.boxes.map((b) => {
-              const isOpen = openBoxes.includes(b.id);
-              const totalQty = b.items.reduce((sum, it) => sum + it.qty, 0);
-              const canDelete = !isComplete && b.items.length === 0;
+          {/* Collapse-based Boxes */}
+          <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <h3 style={{ margin: 0 }}>Boxes</h3>
+              {!isComplete && <Button type="primary" size="small" onClick={() => setShowAddBoxModal(true)}>+ Add Box</Button>}
+            </div>
 
-              const toggleBox = (e) => {
-                e.stopPropagation();
-                if (isOpen) setOpenBoxes(openBoxes.filter((id) => id !== b.id));
-                else setOpenBoxes([...openBoxes, b.id]);
-                setActiveBoxId(b.id);
-              };
+            <Collapse multiple>
+              {pack.boxes.map((b) => {
+                const totalQty = b.items.reduce((sum, it) => sum + it.qty, 0);
+                const canDelete = !isComplete && b.items.length === 0;
+                const header = (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span>
+                      <b>{b.label}</b>
+                      <span style={{ color: "#888", marginLeft: 6 }}>
+                        {b.weight_lbs ? ` | ${b.weight_lbs} lb` : ""}
+                        {totalQty ? ` | ${totalQty} pcs` : ""}
+                      </span>
+                    </span>
+                    {canDelete && (
+                      <DeleteOutlined
+                        style={{ color: "#ff4d4f", fontSize: 16 }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteBox(b.id);
+                        }}
+                      />
+                    )}
+                  </div>
+                );
 
-              return (
-                <Card
-                  key={b.id}
-                  size="small"
-                  style={{
-                    marginBottom: 8,
-                    border: activeBoxId === b.id ? "2px solid #1677ff" : "1px solid #f0f0f0",
-                    backgroundColor: b.weight_lbs ? "#ffffff" : "#fff4f4",
-                    cursor: "pointer",
-                  }}
-                  onClick={toggleBox}
-                  title={
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <motion.div animate={{ rotate: isOpen ? 180 : 0 }} transition={{ duration: 0.3 }} style={{ display: "flex", alignItems: "center" }}>
-                          <DownOutlined />
-                        </motion.div>
-                        <span>
-                          <b>{b.label}</b>
-                          {!isOpen && (
-                            <span style={{ color: "#888" }}>
-                              {b.weight_lbs ? ` | ${b.weight_lbs} lb` : ""}
-                              {totalQty ? ` | ${totalQty} pcs` : ""}
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                      <DeleteOutlined style={{ color: canDelete ? "#ff4d4f" : "#ccc" }} />
-                    </div>
-                  }
-                >
-                  <AnimatePresence>
-                    {isOpen && (
-                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.3 }}>
-                        <div style={{ marginBottom: 8 }}>
+                return (
+                  <Collapse.Panel
+                    key={b.id}
+                    header={header}
+                    style={{
+                      border: activeBoxId === b.id ? "2px solid #1677ff" : "1px solid #ddd",
+                      borderRadius: 8,
+                      backgroundColor: b.weight_lbs ? "#fff" : "#fff4f4",
+                      marginBottom: 8,
+                    }}
+                    onClick={() => setActiveBoxId(b.id)}
+                  >
+                    <AnimatePresence>
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.3 }}
+                      >
+                        <div style={{ marginTop: 8 }}>
                           <b>Weight (lb):</b>{" "}
-                          {/* ✅ Prevent collapse when editing weight */}
                           <InputNumber
                             min={0}
                             step={0.1}
@@ -333,23 +355,32 @@ export default function Orders() {
                             disabled={isComplete}
                           />
                         </div>
+
                         {b.items.length === 0 ? (
-                          <i>Empty box</i>
+                          <i style={{ display: "block", marginTop: 8 }}>Empty box</i>
                         ) : (
                           b.items.map((it) => (
-                            <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                              <MinusCircleOutlined style={{ color: "#ff4d4f", cursor: "pointer", fontSize: 14 }} />
+                            <div key={it.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
                               <span>{it.product_code} × {it.qty}</span>
+                              {!isComplete && (
+                                <MinusCircleOutlined
+                                  style={{ color: "#ff4d4f", fontSize: 16, cursor: "pointer" }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemoveItem(b.id, it.order_line_id, 1);
+                                  }}
+                                />
+                              )}
                             </div>
                           ))
                         )}
                       </motion.div>
-                    )}
-                  </AnimatePresence>
-                </Card>
-              );
-            })}
-          </Card>
+                    </AnimatePresence>
+                  </Collapse.Panel>
+                );
+              })}
+            </Collapse>
+          </div>
         </div>
 
         <AddBoxModal visible={showAddBoxModal} onClose={() => setShowAddBoxModal(false)} packId={pack.header.pack_id} onBoxAdded={refreshSnapshot} />
