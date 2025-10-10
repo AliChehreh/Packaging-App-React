@@ -1,7 +1,7 @@
 // src/api/packs.js
 import axios from "axios";
 
-const API_BASE = "http://localhost:8000/api";
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
 
 export async function startPack(orderNo) {
   const res = await axios.post(`${API_BASE}/pack/start`, { order_no: orderNo });
@@ -67,6 +67,33 @@ export async function setBoxWeight(packId, boxId, weight) {
       error.response?.data?.detail?.error ||
       error.response?.data?.detail ||
       "Failed to set weight";
+    throw new Error(msg);
+  }
+}
+
+export async function deleteBox(packId, boxId) {
+  try {
+    const res = await axios.delete(`${API_URL}/pack/${packId}/boxes/${boxId}`);
+    return res.data;
+  } catch (err) {
+    const msg =
+      err?.response?.data?.detail || err.message || "Failed to delete box";
+    throw new Error(msg);
+  }
+}
+
+export async function removeItemFromBox(packId, boxId, orderLineId, qty = 1) {
+  try {
+    const res = await axios.post(
+      `${API_URL}/pack/${packId}/boxes/${boxId}/remove-item`,
+      { order_line_id: orderLineId, qty }
+    );
+    return res.data;
+  } catch (err) {
+    const msg =
+      err?.response?.data?.detail ||
+      err.message ||
+      "Failed to remove item from box";
     throw new Error(msg);
   }
 }

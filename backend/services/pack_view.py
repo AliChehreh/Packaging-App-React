@@ -437,3 +437,75 @@ def set_box_weight(db: Session, pack_id: int, box_id: int, weight: float | None)
         box.weight_lbs = weight_lbs
 
     db.commit()
+
+# ---------------------------------------------------------------------
+# Delete box if empty
+# ---------------------------------------------------------------------
+
+def delete_box_if_empty(db: Session, pack_id: int, box_id: int):
+    """
+    Delete a box only if it belongs to the given pack and contains no items.
+    """
+    box = (
+        db.query(models.PackBox)
+        .filter(models.PackBox.id == box_id, models.PackBox.pack_id == pack_id)
+        .first()
+    )
+    if not box:
+        raise ValueError(f"Box {box_id} not found for Pack {pack_id}")
+
+    item_count = (
+        db.query(func.count(models.PackBoxItem.id))
+        .filter(models.PackBoxItem.pack_box_id == box_id)
+        .scalar()
+    )
+    if item_count and item_count > 0:
+        raise ValueError(f"Cannot delete Box {box_id}: it is not empty")
+
+    db.delete(box)
+    db.commit()
+
+# ---------------------------------------------------------------------
+# Remove Items from Box
+# ---------------------------------------------------------------------
+
+
+def remove_item_from_box(
+    db: Session, pack_id: int, box_id: int, order_line_id: int, qty: int = 1
+):
+    """
+    Remove a specific quantity (or all) of an item from a box.
+    Enforces that the box belongs to the same pack.
+    """
+    if qty <= 0:
+        raise ValueError("Quantity to remove must be positive")
+
+    # Validate box ownership
+    box = (
+        db.query(models.PackBox)
+        .filter(models.PackBox.id == box_id, models.PackBox.pack_id == pack_id)
+        .first()
+    )
+    if not box:
+        raise ValueError(f"Box {box_id} not found for Pack {pack_id}")
+
+    # Find item entry
+    item = (
+        db.query(models.PackBoxItem)
+        .filter(
+            models.PackBoxItem.pack_box_id == box_id,
+            models.PackBoxItem.order_line_id == order_line_id,
+        )
+        .first()
+    )
+    if not item:
+        raise ValueError("Item not found in this box")
+
+    if qty >= item.qty:
+        # remove entire record
+        db.delete(item)
+    else:
+        # decrement quantity
+        item.qty -= qty
+
+    db.commit()

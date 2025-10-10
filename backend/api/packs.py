@@ -227,3 +227,38 @@ def set_box_weight(
         return pack_view.get_pack_snapshot(db, pack_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    
+@router.delete("/{pack_id}/boxes/{box_id}")
+def delete_box(pack_id: int, box_id: int, db: Session = Depends(get_db)):
+    """
+    Delete a box from a pack.
+    Only allowed if the box is empty.
+    """
+    try:
+        pack_view.delete_box_if_empty(db, pack_id, box_id)
+        return pack_view.get_pack_snapshot(db, pack_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/{pack_id}/boxes/{box_id}/remove-item")
+def remove_item_from_box(
+    pack_id: int,
+    box_id: int,
+    body: dict,
+    db: Session = Depends(get_db),
+):
+    """
+    Remove a quantity (or the entire item) from a specific box.
+    """
+    try:
+        order_line_id = body.get("order_line_id")
+        qty = body.get("qty", 1)
+        if not order_line_id:
+            raise HTTPException(400, "Missing order_line_id")
+
+        pack_view.remove_item_from_box(db, pack_id, box_id, order_line_id, qty)
+        return pack_view.get_pack_snapshot(db, pack_id)
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
