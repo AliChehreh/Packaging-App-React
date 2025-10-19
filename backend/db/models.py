@@ -84,6 +84,9 @@ class OrderLine(Base):
     height_in: Mapped[int] = mapped_column(Integer)   # inches (rounded)
     finish: Mapped[str | None] = mapped_column(String(64), nullable=True)
     qty_ordered: Mapped[int] = mapped_column(Integer)
+    build_note: Mapped[str | None] = mapped_column(String(255), nullable=True)  # ⬅️ new field
+    product_tag: Mapped[str | None] = mapped_column(String(64), nullable=True)   # ⬅️ new field
+    
 
     # relation back to Order
     order: Mapped["Order"] = relationship(back_populates="lines")

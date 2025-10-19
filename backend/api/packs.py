@@ -1,5 +1,7 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
+from backend.services.report import generate_packing_slip_via_excel
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import func, select
@@ -65,6 +67,8 @@ def start_pack(payload: dict, db: Session = Depends(get_db)):
                     height_in=round(float(l["height_in"] or 0)),
                     qty_ordered=int(l["qty_ordered"] or 0),
                     finish=l.get("finish"),
+                    build_note=l.get("Build_note"),
+                    product_tag=l.get("product_tag")
                 )
             )
         db.commit()
@@ -175,6 +179,11 @@ def complete_pack(
 # ---------------------------------------------------------------------
 # Assign item to box
 # ---------------------------------------------------------------------
+import os
+from fastapi.responses import FileResponse
+from backend.services.report import generate_packing_slip_via_excel
+from backend.services.pack_view import get_packing_slip_data
+
 @router.post("/{pack_id}/assign-one")
 def assign_one(pack_id: int, body: dict, db: Session = Depends(get_db)):
     """
@@ -262,3 +271,49 @@ def remove_item_from_box(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+# ---------------------------------------------------------------------
+# Packing Slip PDF and report data endpoints
+# ---------------------------------------------------------------------
+
+@router.get("/{pack_id}/packing-slip.pdf")
+def export_packing_slip_pdf(pack_id: int):
+    """
+    Generate a packing slip PDF for the specified pack.
+
+    This endpoint fetches the packing slip data using `get_packing_slip_data`,
+    builds a PDF via the Excel-based report generator, and streams the file
+    back to the client.  If the pack does not exist, a 404 error is
+    returned; if the report fails to generate, a 500 error is raised.
+    """
+    # Fetch the report data
+    data = get_packing_slip_data(pack_id)
+    if not data:
+        raise HTTPException(404, "Pack not found")
+
+    # Create the PDF via Excel macro
+    pdf_path = generate_packing_slip_via_excel(data, pack_id)
+    # Validate that the file exists
+    if not (pdf_path and os.path.exists(pdf_path)):
+        raise HTTPException(500, "PDF generation failed")
+
+    # Stream the file back to the caller
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        filename=f"packing_slip_{pack_id}.pdf",
+    )
+
+
+@router.get("/{pack_id}/report-data")
+def get_packing_slip_report_data(pack_id: int):
+    """
+    Return the JSON data used to build a packing slip.
+
+    This is useful for debugging or to display the report contents on the
+    frontend without generating a PDF.  If the pack is not found, a 404
+    error is returned.
+    """
+    data = get_packing_slip_data(pack_id)
+    if not data:
+        raise HTTPException(404, "Pack not found")
+    return data

@@ -84,7 +84,9 @@ LINES_SQL = text("""
         sod.[DisplayName]                           AS product_code,
         sod.[Width]                                 AS length_in,
         sod.[Height]                                AS height_in,
-        fn.[DisplayName]                            AS finish
+        fn.[DisplayName]                            AS finish,
+        sod.[buildNotes]                            AS build_note,
+        sod.[productTag]                            AS product_tag
     FROM [Dayus_OES].[dbo].[SalesOrderDetails] sod
     LEFT JOIN [Dayus_OES].[dbo].[Finishes] fn
         ON sod.[ColorID] = fn.[FinishID]

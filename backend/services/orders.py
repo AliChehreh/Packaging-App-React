@@ -47,6 +47,8 @@ def ensure_order_in_app(db: Session, order_no: str) -> Order:
             height_in=_to_int_round(ln.get("height_in")),
             finish=ln.get("finish"),
             qty_ordered=int(ln.get("qty_ordered") or 0),
+            build_note=ln.get("build_note"),
+            product_tag=ln.get("product_tag"),
         ))
 
     db.commit()

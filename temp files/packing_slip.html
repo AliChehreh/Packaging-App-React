@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Packing Slip - {{ packing_slip["order_no"] }}</title>
+  <style>
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 11pt;
+      color: #000;
+      margin: 0;
+      padding: 0;
+    }
+
+    @page {
+      size: letter;
+      margin: 15mm 12mm 15mm 12mm;
+    }
+
+    .container {
+      width: 100%;
+      padding: 10px;
+    }
+
+    .header {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #000;
+      padding-bottom: 6px;
+      margin-bottom: 8px;
+    }
+
+    .header-left img {
+      height: 60px;
+      padding-right: 15px ;
+    }
+
+    .header-right {
+      text-align: right;
+      font-weight: bold;
+      font-size: 12pt;
+      line-height: 1.2;
+      padding-right: 15px ;
+    }
+
+    .title {
+      text-align: center;
+      font-size: 16pt;
+      font-weight: bold;
+      margin-top: 4px;
+      margin-bottom: 8px;
+      letter-spacing: 1px;
+    }
+
+    .meta {
+      width: 100%;
+      border: 1px solid #000;
+      margin-bottom: 10px;
+      padding: 6px;
+      font-size: 10pt;
+    }
+
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 2px;
+    }
+
+    .meta-row span.label {
+      font-weight: bold;
+    }
+
+    .address-section {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      width: 100%;
+    }
+
+    .address-box {
+      width: 48%;
+      border: 1px solid #000;
+      padding: 8px;
+      font-size: 10pt;
+    }
+
+    .address-box .label {
+      font-weight: bold;
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10pt;
+      margin-top: 8px;
+    }
+
+    th, td {
+      border: 1px solid #000;
+      padding: 6px 8px;
+      text-align: left;
+    }
+
+    th {
+      background-color: #f0f0f0;
+      font-weight: bold;
+    }
+
+    .box-summary {
+      margin-top: 15px;
+    }
+
+    .footer {
+      text-align: center;
+      font-size: 9pt;
+      border-top: 1px solid #000;
+      padding-top: 6px;
+      margin-top: 12px;
+    }
+
+    .notes {
+      margin-top: 6px;
+      font-style: italic;
+    }
+
+    .barcode {
+      position: absolute;
+      top: 25mm;
+      right: 15mm;
+    }
+
+    .barcode img {
+      height: 45px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="header-left">
+        <img src="file:///C:/Packaging-App-React/backend/static/images/logo.png" alt="Dayus Logo">
+      </div>
+      <div class="header-right">
+        <img src="file:///C:/Packaging-App-React/backend/static/images/logo.png" alt="Dayus Logo">
+      </div>
+    </div>
+
+    <!-- Optional Barcode -->
+    {% if packing_slip["barcode_image"] %}
+    <div class="barcode">
+      <img src="{{ packing_slip["barcode_image"] }}" alt="Barcode">
+    </div>
+    {% endif %}
+
+    <!-- Title -->
+    <div class="title">PACKING SLIP</div>
+
+    <!-- Order Meta -->
+    <div class="meta">
+      <div class="meta-row"><span class="label">Order #:</span> {{ packing_slip["order_no"] }} &nbsp;&nbsp;
+        <span class="label">PO #:</span> {{ packing_slip["po_number"] }}</div>
+      <div class="meta-row"><span class="label">Order Date:</span> {{ packing_slip["order_date"] }} &nbsp;&nbsp;
+        <span class="label">Due Date:</span> {{ packing_slip["due_date"] }}</div>
+      <div class="meta-row"><span class="label">Ship By:</span> {{ packing_slip["ship_by"] }} ({{ packing_slip["ship_by_date"] }})</div>
+      <div class="meta-row"><span class="label">Lead Time Plan:</span> {{ packing_slip["lead_time_plan"] }}</div>
+      {% if packing_slip["project_name"] %}
+      <div class="meta-row"><span class="label">Project:</span> {{ packing_slip["project_name"] }}</div>
+      {% endif %}
+      {% if packing_slip["tag"] %}
+      <div class="meta-row"><span class="label">Tag:</span> {{ packing_slip["tag"] }}</div>
+      {% endif %}
+    </div>
+
+    <!-- Address Section -->
+    <div class="address-section">
+      <div class="address-box">
+        <span class="label">Bill To:</span>
+        {{ packing_slip["customer_name"] }}<br>
+        {{ packing_slip["customer_address1"] }}<br>
+        {% if packing_slip["customer_address2"] %}{{ packing_slip["customer_address2"] }}<br>{% endif %}
+        {{ packing_slip["customer_city"] }}, {{ packing_slip["customer_province"] }} {{ packing_slip["customer_postal_code"] }}<br>
+        {% if packing_slip["customer_phone"] %}Phone: {{ packing_slip["customer_phone"] }}<br>{% endif %}
+        {% if packing_slip["sales_rep_name"] %}{{ packing_slip["sales_rep_name"] }}{% endif %}
+      </div>
+
+      <div class="address-box">
+        <span class="label">Ship To:</span>
+        {{ packing_slip["ship_name"] }}<br>
+        {{ packing_slip["ship_address1"] }}<br>
+        {% if packing_slip["ship_address2"] %}{{ packing_slip["ship_address2"] }}<br>{% endif %}
+        {{ packing_slip["ship_city"] }}, {{ packing_slip["ship_province"] }} {{ packing_slip["ship_postal_code"] }}<br>
+        {{ packing_slip["ship_country"] }}<br>
+        {% if packing_slip["ship_attention"] %}Attn: {{ packing_slip["ship_attention"] }}<br>{% endif %}
+        {% if packing_slip["ship_phone"] %}Phone: {{ packing_slip["ship_phone"] }}<br>{% endif %}
+        {% if packing_slip["ship_email"] %}Email: {{ packing_slip["ship_email"] }}{% endif %}
+      </div>
+    </div>
+
+    <!-- Items Table -->
+    <table>
+      <thead>
+        <tr>
+          <th>Box #</th>
+          <th>Qty Ordered</th>
+          <th>Qty Shipped</th>
+          <th>Product Code</th>
+          <th>Length (in)</th>
+          <th>Height (in)</th>
+          <th>Finish</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in packing_slip["items"] %}
+        <tr>
+          <td>{{ item.box_no }}</td>
+          <td>{{ item.qty_ordered }}</td>
+          <td>{{ item.qty_shipped }}</td>
+          <td>{{ item.product_code }}</td>
+          <td>{{ "%.3f"|format(item.length_in) }}</td>
+          <td>{{ "%.3f"|format(item.height_in) }}</td>
+          <td>{{ item.finish }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Box Summary -->
+    {% if packing_slip["boxes"] %}
+    <div class="box-summary">
+      <h3>Box Summary</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Box #</th>
+            <th>Carton Type</th>
+            <th>Weight (lbs)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for box in packing_slip["boxes"] %}
+          <tr>
+            <td>{{ box.box_no }}</td>
+            <td>{{ box.carton_type }}</td>
+            <td>{{ box.weight_lbs }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    <!-- Footer -->
+    <div class="footer">
+      <div>DAYUS Ventilation Products Ltd. | Toledo, OH | www.dayus.com | (800) 387-0768</div>
+      <div>Generated by {{ packing_slip["generated_by"] }} on {{ packing_slip["generated_at"] }}</div>
+      {% if packing_slip["notes"] %}
+      <div class="notes">{{ packing_slip["notes"] }}</div>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

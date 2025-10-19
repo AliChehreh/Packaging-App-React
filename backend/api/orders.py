@@ -26,6 +26,8 @@ class OrderLine(BaseModel):
     length_in: int
     height_in: int
     finish: Optional[str] = None
+    build_note: Optional[str] = None
+    product_tag: Optional[str] = None
 
     class Config:
         from_attributes = True  # Pydantic v1 compat; v2 shim also supports this

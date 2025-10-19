@@ -3,12 +3,13 @@ import math
 
 from typing import Dict, List, Optional
 
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-
+from datetime import datetime
 from backend.db import models
-
+from backend.services.barcode_helper import generate_barcode_base64
+from backend.db.session import oes_engine, app_engine
 
 # ---------------------------------------------------------------------
 # Pack snapshot for UI
@@ -509,3 +510,121 @@ def remove_item_from_box(
         item.qty -= qty
 
     db.commit()
+
+
+# ---------------------------------------------------------------------
+# Data assembler for packing slip report
+# ---------------------------------------------------------------------
+def get_packing_slip_data(pack_id: int):
+    """Fetch packing slip data for a completed pack."""
+    # --- 0. Get order_no from local pack + order tables (app DB) ---
+    query_pack = text("""
+        SELECT ord.order_no
+        FROM pack
+        LEFT JOIN dbo.[order] AS ord ON pack.order_id = ord.id
+        WHERE pack.id = :pack_id
+    """)
+    with app_engine.connect() as conn:
+        order_no = conn.execute(query_pack, {"pack_id": pack_id}).scalar_one_or_none()
+
+    if not order_no:
+        raise ValueError(f"Pack {pack_id} not found or missing linked order.")
+
+    # --- 1. Get order and customer info from OES using order_no ---
+    query_header = text("""
+        SELECT
+            CAST(so.SalesOrderID AS NVARCHAR(50)) AS order_no,
+            sot.Name AS lead_time_plan,
+            so.CustomerPONo AS po_number,
+            CONVERT(VARCHAR(10), so.OrderDate, 120) AS order_date,
+            CONVERT(VARCHAR(10), so.DueDate, 120) AS due_date,
+            so.Project AS project_name,
+            so.Tag AS tag,
+            so.ClientName AS customer_name,
+            so.ClientAddress AS customer_address1,
+            so.ClientAddress2 AS customer_address2,
+            so.ClientCity AS customer_city,
+            so.ClientProvince AS customer_province,
+            so.ClientPostalCode AS customer_postal_code,
+            so.ClientCountry AS customer_country,
+            so.ClientPhone AS customer_phone,
+            so.contactName AS sales_rep_name,
+            so.ContactEmail AS client_email,
+            so.ShippingName AS ship_name,
+            so.ShippingAddress AS ship_address1,
+            so.ShippingAddress2 AS ship_address2,
+            so.ShippingCity AS ship_city,
+            so.ShippingProvince AS ship_province,
+            so.ShippingPostalCode AS ship_postal_code,
+            so.ShippingCountry AS ship_country,
+            so.ShippingPhone AS ship_phone,
+            so.ShippingAttention AS ship_attention,
+            so.ContactEmail AS ship_email,
+            CONCAT(so.shipby,' - ',so.ServiceLevel,' - ',so.ShippingDefaultTerm,' - Account #: ',so.ShippingAccountNo) AS ship_by,
+            CONVERT(VARCHAR(10), so.ActualShipDate, 120) AS ship_by_date,
+            so.OrderStatus,
+            so.ShippingNotes
+        FROM SalesOrders so
+        LEFT JOIN SalesOrderTypes sot ON so.SalesOrderTypeID = sot.SalesOrderTypeID
+        WHERE CAST(so.SalesOrderID AS NVARCHAR(50)) = :order_no
+    """)
+    with oes_engine.connect() as conn:
+        order_info = conn.execute(query_header, {"order_no": order_no}).mappings().first()
+
+    if not order_info:
+        raise ValueError(f"OES order {order_no} not found.")
+
+    # --- 2. Get packing items (from app DB) ---
+    query_items_local = text("""
+        SELECT
+            pb.box_no,
+            ISNULL(ct.name,
+                CONCAT('Custom ', pb.custom_l_in, 'x', pb.custom_w_in, 'x', pb.custom_h_in)
+            ) AS carton_type,
+            pb.weight_lbs AS weight_lb,
+            ol.product_code,
+            ol.length_in,
+            ol.height_in,
+            ol.finish,
+            ol.qty_ordered,
+            pbi.qty AS qty_shipped,
+            ol.build_note,
+            ol.product_tag
+        FROM pack_box_item AS pbi
+        INNER JOIN pack_box AS pb ON pbi.pack_box_id = pb.id
+        INNER JOIN [order_line] AS ol ON pbi.order_line_id = ol.id
+        LEFT JOIN carton_type AS ct ON pb.carton_type_id = ct.id
+        WHERE pb.pack_id = :pack_id
+        ORDER BY pb.box_no, ol.product_code
+    """)
+    
+    with app_engine.connect() as conn:
+        items = [dict(row) for row in conn.execute(query_items_local, {"pack_id": pack_id}).mappings()]
+
+    # --- 3. Get box info (from app DB) ---
+    query_boxes = text("""
+        SELECT 
+            pb.box_no,
+            ISNULL(ct.name,
+                CONCAT('Custom ', pb.custom_l_in, 'x', pb.custom_w_in, 'x', pb.custom_h_in)
+            ) AS carton_type,
+            pb.weight_lbs
+        FROM pack_box AS pb
+        LEFT JOIN carton_type AS ct ON pb.carton_type_id = ct.id
+        WHERE pb.pack_id = :pack_id
+        ORDER BY pb.box_no
+    """)
+    
+    with app_engine.connect() as conn:
+        boxes = [dict(row) for row in conn.execute(query_boxes, {"pack_id": pack_id}).mappings()]
+
+    # --- 4. Merge into final data structure ---
+    slip = dict(order_info)
+    slip["boxes"] = boxes
+    slip["items"] = items
+    slip["pack_id"] = pack_id
+    slip["generated_by"] = "system"  # or current user
+    slip["generated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+    slip["notes"] = order_info.get("ShippingNotes") or ""
+
+    return slip
