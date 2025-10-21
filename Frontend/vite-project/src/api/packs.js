@@ -102,11 +102,24 @@ export async function removeItemFromBox(packId, boxId, orderLineId, qty = 1) {
 // Download packing slip PDF
 export async function downloadPackingSlip(packId) {
   const url = `${API_BASE}/pack/${packId}/packing-slip.pdf`;
-  // If you don’t need custom headers/auth, streaming is simplest:
+  // If you don't need custom headers/auth, streaming is simplest:
   const a = document.createElement("a");
   a.href = url;
   a.download = `packing_slip_${packId}.pdf`; // browser may ignore; server filename wins
   document.body.appendChild(a);
   a.click();
   a.remove();
+}
+
+export async function duplicateBox(packId, boxId) {
+  try {
+    const res = await axios.post(`${API_BASE}/pack/${packId}/boxes/${boxId}/duplicate`);
+    return res.data;
+  } catch (error) {
+    const msg =
+      error.response?.data?.detail?.error ||
+      error.response?.data?.detail ||
+      "Failed to duplicate box";
+    throw new Error(msg);
+  }
 }

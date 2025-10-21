@@ -271,6 +271,36 @@ def remove_item_from_box(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@router.post("/{pack_id}/boxes/{box_id}/duplicate")
+def duplicate_box(
+    pack_id: int,
+    box_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Duplicate a box with all its items and settings.
+    Returns the updated pack snapshot or validation errors.
+    """
+    try:
+        result = pack_view.duplicate_box(db, pack_id, box_id)
+        return result
+    except pack_view.DuplicateBoxError as e:
+        # Return validation errors with product codes that prevent duplication
+        raise HTTPException(
+            status_code=400,
+            detail={"error": str(e), "preventing_products": e.preventing_products}
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": str(e)}
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={"error": f"Unexpected server error: {str(e)}"}
+        )
+
 # ---------------------------------------------------------------------
 # Packing Slip PDF and report data endpoints
 # ---------------------------------------------------------------------

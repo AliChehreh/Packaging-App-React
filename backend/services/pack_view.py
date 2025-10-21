@@ -11,6 +11,13 @@ from backend.db import models
 from backend.services.barcode_helper import generate_barcode_base64
 from backend.db.session import oes_engine, app_engine
 
+
+class DuplicateBoxError(Exception):
+    """Custom exception for box duplication validation errors."""
+    def __init__(self, message: str, preventing_products: List[Dict]):
+        super().__init__(message)
+        self.preventing_products = preventing_products
+
 # ---------------------------------------------------------------------
 # Pack snapshot for UI
 # ---------------------------------------------------------------------
@@ -104,6 +111,8 @@ def get_pack_snapshot(db: Session, pack_id: int) -> Dict:
                 models.PackBoxItem.order_line_id,
                 models.PackBoxItem.qty,
                 models.OrderLine.product_code,
+                models.OrderLine.length_in,
+                models.OrderLine.height_in,
             )
             .join(models.OrderLine, models.OrderLine.id == models.PackBoxItem.order_line_id)
             .where(models.PackBoxItem.pack_box_id.in_(box_ids))
@@ -115,6 +124,8 @@ def get_pack_snapshot(db: Session, pack_id: int) -> Dict:
                     "id": im["id"],
                     "order_line_id": im["order_line_id"],
                     "product_code": im["product_code"],
+                    "length_in": im["length_in"],
+                    "height_in": im["height_in"],
                     "qty": int(im["qty"] or 0),
                 }
             )
@@ -510,6 +521,106 @@ def remove_item_from_box(
         item.qty -= qty
 
     db.commit()
+
+
+def _next_box_no(db: Session, pack_id: int) -> int:
+    """Get the next box number for a pack."""
+    q = select(func.coalesce(func.max(models.PackBox.box_no), 0)).where(models.PackBox.pack_id == pack_id)
+    return int(db.execute(q).scalar_one()) + 1
+
+
+def duplicate_box(db: Session, pack_id: int, box_id: int):
+    """
+    Duplicate a box with all its items and settings.
+    Validates that there's enough remaining quantity for all items.
+    Returns the updated pack snapshot.
+    """
+    # Validate pack and box
+    pack = db.get(models.Pack, pack_id)
+    if not pack:
+        raise ValueError("Pack not found")
+
+    original_box = (
+        db.query(models.PackBox)
+        .filter(models.PackBox.id == box_id, models.PackBox.pack_id == pack_id)
+        .first()
+    )
+    if not original_box:
+        raise ValueError(f"Box {box_id} not found for Pack {pack_id}")
+
+    # Get all items in the original box
+    original_items = (
+        db.query(models.PackBoxItem)
+        .filter(models.PackBoxItem.pack_box_id == box_id)
+        .all()
+    )
+
+    if not original_items:
+        raise ValueError("Cannot duplicate empty box")
+
+    # Check remaining quantities for all items
+    preventing_products = []
+    for item in original_items:
+        # Get total packed quantity for this line across all boxes
+        total_packed = (
+            db.query(func.coalesce(func.sum(models.PackBoxItem.qty), 0))
+            .join(models.PackBox, models.PackBox.id == models.PackBoxItem.pack_box_id)
+            .where(
+                models.PackBox.pack_id == pack_id,
+                models.PackBoxItem.order_line_id == item.order_line_id,
+            )
+            .scalar()
+        )
+
+        # Get ordered quantity
+        order_line = db.get(models.OrderLine, item.order_line_id)
+        if not order_line:
+            continue
+
+        ordered_qty = order_line.qty_ordered
+        remaining = ordered_qty - total_packed
+
+        if remaining < item.qty:
+            preventing_products.append({
+                "product_code": order_line.product_code,
+                "needed": item.qty,
+                "remaining": remaining
+            })
+
+    if preventing_products:
+        raise DuplicateBoxError(
+            "Cannot duplicate box: insufficient remaining quantities",
+            preventing_products
+        )
+
+    # Create new box with same settings
+    new_box = models.PackBox(
+        pack_id=pack_id,
+        box_no=_next_box_no(db, pack_id),
+        carton_type_id=original_box.carton_type_id,
+        custom_l_in=original_box.custom_l_in,
+        custom_w_in=original_box.custom_w_in,
+        custom_h_in=original_box.custom_h_in,
+        max_weight_lb=original_box.max_weight_lb,
+        weight_lbs=original_box.weight_lbs,
+        weight_entered=original_box.weight_entered,
+    )
+    db.add(new_box)
+    db.flush()  # Get the new box ID
+
+    # Duplicate all items
+    for item in original_items:
+        new_item = models.PackBoxItem(
+            pack_box_id=new_box.id,
+            order_line_id=item.order_line_id,
+            qty=item.qty
+        )
+        db.add(new_item)
+
+    db.commit()
+
+    # Return updated snapshot
+    return get_pack_snapshot(db, pack_id)
 
 
 # ---------------------------------------------------------------------

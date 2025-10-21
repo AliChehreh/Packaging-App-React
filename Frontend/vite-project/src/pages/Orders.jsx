@@ -15,11 +15,13 @@ import {
   Select,
   Collapse,
   Tooltip,
+  Popover,
 } from "antd";
 import {
   DeleteOutlined,
   MinusCircleOutlined,
   DownloadOutlined,
+  CopyOutlined,
 } from "@ant-design/icons";
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -34,6 +36,7 @@ import {
   deleteBox,
   removeItemFromBox,
   downloadPackingSlip,
+  duplicateBox,
 } from "../api/packs";
 import { listCartonTypes } from "../api/cartons";
 
@@ -275,6 +278,34 @@ export default function Orders() {
       }
     }
 
+    async function handleDuplicateBox() {
+      if (isComplete || !activeBoxId) return;
+      try {
+        message.loading({ content: "Duplicating box...", key: "duplicate" });
+        const snap = await duplicateBox(packId, activeBoxId);
+        setPack(snap);
+        message.success({ content: "Box duplicated successfully", key: "duplicate", duration: 2 });
+        // Set the new box as active (it will be the last one in the list)
+        const newBoxId = snap.boxes[snap.boxes.length - 1]?.id;
+        if (newBoxId) setActiveBoxId(newBoxId);
+      } catch (err) {
+        // Check if the error contains preventing products
+        if (err.response?.data?.detail?.preventing_products) {
+          const preventingProducts = err.response.data.detail.preventing_products;
+          const productList = preventingProducts.map(p => 
+            `${p.product_code} (needs ${p.needed}, has ${p.remaining})`
+          ).join(', ');
+          message.error({ 
+            content: `Cannot duplicate: ${productList}`, 
+            key: "duplicate",
+            duration: 5
+          });
+        } else {
+          message.error({ content: err.message || "Failed to duplicate box", key: "duplicate" });
+        }
+      }
+    }
+
     async function refreshSnapshot(newBoxId = null) {
       const snap = await getPackSnapshot(pack.header.pack_id);
       setPack(snap);
@@ -318,7 +349,11 @@ export default function Orders() {
         <div style={{ display: "flex", gap: 16, marginTop: 16 }}>
           <Card title="Order Lines" style={{ flex: 1 }}>
             <Table size="small" rowKey={(r) => r.id} dataSource={pack.lines} pagination={false}>
-              <Table.Column title="Product" dataIndex="product_code" />
+              <Table.Column title="Quantity" dataIndex="qty_ordered" />
+              <Table.Column title="Product Code" dataIndex="product_code" />
+              <Table.Column title="Length (in)" dataIndex="length_in" />
+              <Table.Column title="Height (in)" dataIndex="height_in" />
+              <Table.Column title="Finish" dataIndex="finish" />
               <Table.Column title="Remaining" dataIndex="remaining" />
               <Table.Column title="Packed" dataIndex="packed_qty" />
               <Table.Column
@@ -334,7 +369,21 @@ export default function Orders() {
           <div style={{ flex: 1 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
               <h3 style={{ margin: 0 }}>Boxes</h3>
-              {!isComplete && <Button type="primary" size="small" onClick={() => setShowAddBoxModal(true)}>+ Add Box</Button>}
+              {!isComplete && (
+                <Space>
+                  <Button type="primary" size="small" onClick={() => setShowAddBoxModal(true)}>+ Add Box</Button>
+                  <Tooltip title="Duplicate Active Box">
+                    <Button 
+                      size="small" 
+                      icon={<CopyOutlined />}
+                      onClick={handleDuplicateBox}
+                      disabled={!activeBoxId}
+                    >
+                      Duplicate
+                    </Button>
+                  </Tooltip>
+                </Space>
+              )}
             </div>
 
             <Collapse multiple>
@@ -352,7 +401,7 @@ export default function Orders() {
                     </span>
                     {canDelete && (
                       <DeleteOutlined
-                        style={{ color: "#ff4d4f", fontSize: 16 }}
+                        style={{ color: "#ff4d4f", fontSize: 20 }}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleDeleteBox(b.id);
@@ -367,7 +416,7 @@ export default function Orders() {
                     key={b.id}
                     header={header}
                     style={{
-                      border: activeBoxId === b.id ? "2px solid #1677ff" : "1px solid #ddd",
+                      border: activeBoxId === b.id ? "1px solid #1677ff" : "1px solid #ddd",
                       borderRadius: 8,
                       backgroundColor: b.weight_lbs ? "#fff" : "#fff4f4",
                       marginBottom: 8,
@@ -385,7 +434,7 @@ export default function Orders() {
                           <b>Weight (lb):</b>{" "}
                           <InputNumber
                             min={0}
-                            step={0.1}
+                            step={1}
                             value={b.weight_entered ?? null}
                             onClick={(e) => e.stopPropagation()}
                             onChange={(val) => handleWeightChange(b.id, val)}
@@ -400,7 +449,7 @@ export default function Orders() {
                         ) : (
                           b.items.map((it) => (
                             <div key={it.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-                              <span>{it.product_code} × {it.qty}</span>
+                              <span>{`${it.product_code} ${it.length_in} x ${it.height_in} - Qty: ${it.qty}`}</span>
                               {!isComplete && (
                                 <MinusCircleOutlined
                                   style={{ color: "#ff4d4f", fontSize: 16, cursor: "pointer" }}
