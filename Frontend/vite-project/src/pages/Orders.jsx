@@ -14,10 +14,12 @@ import {
   Radio,
   Select,
   Collapse,
+  Tooltip,
 } from "antd";
 import {
   DeleteOutlined,
   MinusCircleOutlined,
+  DownloadOutlined,
 } from "@ant-design/icons";
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -31,6 +33,7 @@ import {
   setBoxWeight,
   deleteBox,
   removeItemFromBox,
+  downloadPackingSlip,
 } from "../api/packs";
 import { listCartonTypes } from "../api/cartons";
 
@@ -235,6 +238,17 @@ export default function Orders() {
       }
     }
 
+    async function handleDownloadPackingSlip() {
+      const packId = pack.header.pack_id;
+      try {
+        message.loading({ content: "Generating packing slip...", key: "dl" });
+        await downloadPackingSlip(packId);
+        message.success({ content: "Packing slip download started.", key: "dl", duration: 2 });
+      } catch (err) {
+        message.error({ content: err?.message || "Failed to download packing slip.", key: "dl" });
+      }
+    }
+
     async function handleAssignQty(lineId, remaining) {
       if (isComplete) return;
       if (!activeBoxId) return message.info("Select a box first");
@@ -272,7 +286,32 @@ export default function Orders() {
 
     return (
       <div style={{ padding: 24 }}>
-        <Card title={`Packing Order #${pack.header.order_no}`} extra={<Space><Button onClick={() => setMode("scan")}>New Order</Button>{!isComplete && (<Button type="primary" danger onClick={handleCompletePack} disabled={!allBoxesWeighted}>Complete Pack</Button>)}</Space>}>
+        <Card title={`Packing Order #${pack.header.order_no}`} 
+          extra={
+    <Space>
+      <Tooltip title="Download Packing Slip (PDF)">
+        <Button
+          icon={<DownloadOutlined />}
+          onClick={handleDownloadPackingSlip}
+          disabled={!isComplete}
+        />
+      </Tooltip>
+
+      <Button onClick={() => setMode("scan")}>New Order</Button>
+
+      {!isComplete && (
+        <Button
+          type="primary"
+          danger
+          onClick={handleCompletePack}
+          disabled={!allBoxesWeighted}
+        >
+          Complete Pack
+        </Button>
+      )}
+    </Space>
+  }
+>
           <p><b>Customer:</b> {pack.header.customer_name} | <b>Status:</b> <span style={{ color: isComplete ? "green" : "#1677ff" }}>{pack.header.status.toUpperCase()}</span></p>
         </Card>
 
