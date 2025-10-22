@@ -40,6 +40,23 @@ import {
 } from "../api/packs";
 import { listCartonTypes } from "../api/cartons";
 
+// Helper function to format dimensions with max 3 decimal places
+function formatDimension(value) {
+  if (value === null || value === undefined) return value;
+  const num = parseFloat(value);
+  if (isNaN(num)) return value;
+  
+  // Format to 3 decimal places
+  const formatted = num.toFixed(3);
+  
+  // If decimal part is .000, return without decimal point
+  if (formatted.endsWith('.000')) {
+    return Math.floor(num).toString();
+  }
+  
+  return formatted;
+}
+
 function AddBoxModal({ visible, onClose, packId, onBoxAdded }) {
   const [form] = Form.useForm();
   const [mode, setMode] = useState("custom");
@@ -120,7 +137,7 @@ function AddBoxModal({ visible, onClose, packId, onBoxAdded }) {
             >
               {cartons.map((c) => (
                 <Select.Option key={c.id} value={c.id}>
-                  {c.name} ({c.length_in}×{c.width_in}×{c.height_in} in, max {c.max_weight_lb} lb)
+                  {c.name} ({formatDimension(c.length_in)}×{formatDimension(c.width_in)}×{formatDimension(c.height_in)} in, max {c.max_weight_lb} lb)
                 </Select.Option>
               ))}
             </Select>
@@ -193,8 +210,16 @@ export default function Orders() {
 
   const lineColumns = [
     { title: "Product Code", dataIndex: "product_code" },
-    { title: "Length", dataIndex: "length_in" },
-    { title: "Height", dataIndex: "height_in" },
+    { 
+      title: "Length", 
+      dataIndex: "length_in",
+      render: (value) => formatDimension(value)
+    },
+    { 
+      title: "Height", 
+      dataIndex: "height_in",
+      render: (value) => formatDimension(value)
+    },
     { title: "Qty", dataIndex: "qty_ordered" },
     { title: "Finish", dataIndex: "finish" },
   ];
@@ -351,8 +376,16 @@ export default function Orders() {
             <Table size="small" rowKey={(r) => r.id} dataSource={pack.lines} pagination={false}>
               <Table.Column title="Quantity" dataIndex="qty_ordered" />
               <Table.Column title="Product Code" dataIndex="product_code" />
-              <Table.Column title="Length (in)" dataIndex="length_in" />
-              <Table.Column title="Height (in)" dataIndex="height_in" />
+              <Table.Column 
+                title="Length (in)" 
+                dataIndex="length_in" 
+                render={(value) => formatDimension(value)}
+              />
+              <Table.Column 
+                title="Height (in)" 
+                dataIndex="height_in" 
+                render={(value) => formatDimension(value)}
+              />
               <Table.Column title="Finish" dataIndex="finish" />
               <Table.Column title="Remaining" dataIndex="remaining" />
               <Table.Column title="Packed" dataIndex="packed_qty" />
@@ -368,7 +401,7 @@ export default function Orders() {
           {/* Collapse-based Boxes */}
           <div style={{ flex: 1 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <h3 style={{ margin: 0 }}>Boxes</h3>
+              <h3 style={{ margin: 0 }}>Boxes ({pack.boxes.length})</h3>
               {!isComplete && (
                 <Space>
                   <Button type="primary" size="small" onClick={() => setShowAddBoxModal(true)}>+ Add Box</Button>
@@ -386,8 +419,37 @@ export default function Orders() {
               )}
             </div>
 
-            <Collapse multiple>
-              {pack.boxes.map((b) => {
+            <div 
+              style={{ 
+                maxHeight: '600px', // Approximately 10 boxes at ~60px each
+                overflowY: 'auto',
+                border: '1px solid #d9d9d9',
+                borderRadius: '6px',
+                padding: '8px',
+                // Custom scrollbar styling
+                scrollbarWidth: 'thin',
+                scrollbarColor: '#bfbfbf #f0f0f0',
+                position: 'relative'
+              }}
+            >
+              {pack.boxes.length > 10 && (
+                <div style={{
+                  position: 'absolute',
+                  top: '4px',
+                  right: '8px',
+                  background: '#1677ff',
+                  color: 'white',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  zIndex: 10,
+                  pointerEvents: 'none'
+                }}>
+                  Scroll to see more
+                </div>
+              )}
+              <Collapse multiple>
+                {pack.boxes.map((b) => {
                 const totalQty = b.items.reduce((sum, it) => sum + it.qty, 0);
                 const canDelete = !isComplete && b.items.length === 0;
                 const header = (
@@ -449,7 +511,7 @@ export default function Orders() {
                         ) : (
                           b.items.map((it) => (
                             <div key={it.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-                              <span>{`${it.product_code} ${it.length_in} x ${it.height_in} - Qty: ${it.qty}`}</span>
+                              <span>{`${it.product_code} ${formatDimension(it.length_in)} x ${formatDimension(it.height_in)} - Qty: ${it.qty}`}</span>
                               {!isComplete && (
                                 <MinusCircleOutlined
                                   style={{ color: "#ff4d4f", fontSize: 16, cursor: "pointer" }}
@@ -467,7 +529,8 @@ export default function Orders() {
                   </Collapse.Panel>
                 );
               })}
-            </Collapse>
+              </Collapse>
+            </div>
           </div>
         </div>
 

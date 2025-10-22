@@ -3,7 +3,7 @@ from typing import Optional  # ⬅️ added
 
 from sqlalchemy import (
     Integer, String, Date, DateTime, Enum, ForeignKey, UniqueConstraint,
-    CheckConstraint, Float, Boolean
+    CheckConstraint, Float, Boolean, DECIMAL
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.db.session import AppBase as Base
@@ -29,9 +29,9 @@ class CartonType(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)  # display/description
 
-    length_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    width_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    height_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    length_in: Mapped[float | None] = mapped_column(DECIMAL(10, 3), nullable=True)
+    width_in: Mapped[float | None] = mapped_column(DECIMAL(10, 3), nullable=True)
+    height_in: Mapped[float | None] = mapped_column(DECIMAL(10, 3), nullable=True)
     max_weight_lb: Mapped[int] = mapped_column(Integer, default=40)
 
     style: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -54,9 +54,9 @@ class ProductPackagingProfile(Base):
     __tablename__ = "product_packaging_profile"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     product_code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
-    depth_in: Mapped[int] = mapped_column(Integer)
-    length_mod_in: Mapped[int] = mapped_column(Integer, default=0)
-    height_mod_in: Mapped[int] = mapped_column(Integer, default=0)
+    depth_in: Mapped[float] = mapped_column(DECIMAL(10, 3))
+    length_mod_in: Mapped[float] = mapped_column(DECIMAL(10, 3), default=0)
+    height_mod_in: Mapped[float] = mapped_column(DECIMAL(10, 3), default=0)
     updated_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -80,8 +80,8 @@ class OrderLine(Base):
         nullable=False,
     )
     product_code: Mapped[str] = mapped_column(String(64), index=True)
-    length_in: Mapped[int] = mapped_column(Integer)   # inches (rounded)
-    height_in: Mapped[int] = mapped_column(Integer)   # inches (rounded)
+    length_in: Mapped[float] = mapped_column(DECIMAL(10, 3))   # inches (with decimals)
+    height_in: Mapped[float] = mapped_column(DECIMAL(10, 3))   # inches (with decimals)
     finish: Mapped[str | None] = mapped_column(String(64), nullable=True)
     qty_ordered: Mapped[int] = mapped_column(Integer)
     build_note: Mapped[str | None] = mapped_column(String(255), nullable=True)  # ⬅️ new field
@@ -125,9 +125,9 @@ class PackBox(Base):
     )
     box_no: Mapped[int] = mapped_column(Integer, nullable=False)   # per-order number
     carton_type_id: Mapped[int | None] = mapped_column(ForeignKey("carton_type.id"), nullable=True)
-    custom_l_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    custom_w_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    custom_h_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    custom_l_in: Mapped[float | None] = mapped_column(DECIMAL(10, 3), nullable=True)
+    custom_w_in: Mapped[float | None] = mapped_column(DECIMAL(10, 3), nullable=True)
+    custom_h_in: Mapped[float | None] = mapped_column(DECIMAL(10, 3), nullable=True)
     weight_lbs: Mapped[int | None] = mapped_column(Integer, nullable=True)  # store rounded up
     max_weight_lb: Mapped[int | None] = mapped_column(Integer, nullable=True)  # per-box limit (override)
     weight_entered: Mapped[float | None] = mapped_column(Float, nullable=True)  # actual weight entered by user
@@ -187,9 +187,9 @@ class PackLineOverride(Base):
         nullable=False,
     )
 
-    depth_in: Mapped[int] = mapped_column(Integer)
-    length_mod_in: Mapped[int] = mapped_column(Integer, default=0)
-    height_mod_in: Mapped[int] = mapped_column(Integer, default=0)
+    depth_in: Mapped[float] = mapped_column(DECIMAL(10, 3))
+    length_mod_in: Mapped[float] = mapped_column(DECIMAL(10, 3), default=0)
+    height_mod_in: Mapped[float] = mapped_column(DECIMAL(10, 3), default=0)
 
     __table_args__ = (
         UniqueConstraint("pack_id", "order_line_id", name="uq_pack_line_override"),

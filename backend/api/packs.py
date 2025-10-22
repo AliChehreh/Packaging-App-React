@@ -63,8 +63,8 @@ def start_pack(payload: dict, db: Session = Depends(get_db)):
                 models.OrderLine(
                     order_id=order.id,
                     product_code=l["product_code"],
-                    length_in=round(float(l["length_in"] or 0)),
-                    height_in=round(float(l["height_in"] or 0)),
+                    length_in=round(float(l["length_in"] or 0), 3),
+                    height_in=round(float(l["height_in"] or 0), 3),
                     qty_ordered=int(l["qty_ordered"] or 0),
                     finish=l.get("finish"),
                     build_note=l.get("Build_note"),

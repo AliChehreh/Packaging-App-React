@@ -14,6 +14,23 @@ const get = (r, a, b) => r?.[a] ?? r?.[b];
 const toNum = (v) => (v === null || v === undefined || v === "" ? Number.NEGATIVE_INFINITY : Number(v));
 const toStr = (v) => (v === null || v === undefined ? "" : String(v));
 
+// Helper function to format dimensions with max 3 decimal places
+function formatDimension(value) {
+  if (value === null || value === undefined) return value;
+  const num = parseFloat(value);
+  if (isNaN(num)) return value;
+  
+  // Format to 3 decimal places
+  const formatted = num.toFixed(3);
+  
+  // If decimal part is .000, return without decimal point
+  if (formatted.endsWith('.000')) {
+    return Math.floor(num).toString();
+  }
+  
+  return formatted;
+}
+
 export default function Cartons() {
   const [rows, setRows] = useState([]);
   const [filtered, setFiltered] = useState([]);
@@ -84,9 +101,30 @@ export default function Cartons() {
   // columns (sortable everywhere), sticky header, no pagination, low-stock highlight
   const columns = [
     { title: "Name", dataIndex: "name", width: 220, sorter: (a, b) => toStr(a.name).localeCompare(toStr(b.name)) },
-    { title: "L (in)", dataIndex: "length_in", width: 100, sorter: (a, b) => toNum(a.length_in) - toNum(b.length_in), align: "right" },
-    { title: "W (in)", dataIndex: "width_in", width: 100, sorter: (a, b) => toNum(a.width_in) - toNum(b.width_in), align: "right" },
-    { title: "H (in)", dataIndex: "height_in", width: 100, sorter: (a, b) => toNum(a.height_in) - toNum(b.height_in), align: "right" },
+    { 
+      title: "L (in)", 
+      dataIndex: "length_in", 
+      width: 100, 
+      sorter: (a, b) => toNum(a.length_in) - toNum(b.length_in), 
+      align: "right",
+      render: (value) => formatDimension(value)
+    },
+    { 
+      title: "W (in)", 
+      dataIndex: "width_in", 
+      width: 100, 
+      sorter: (a, b) => toNum(a.width_in) - toNum(b.width_in), 
+      align: "right",
+      render: (value) => formatDimension(value)
+    },
+    { 
+      title: "H (in)", 
+      dataIndex: "height_in", 
+      width: 100, 
+      sorter: (a, b) => toNum(a.height_in) - toNum(b.height_in), 
+      align: "right",
+      render: (value) => formatDimension(value)
+    },
     { title: "Max Wt (lb)", dataIndex: "max_weight_lb", width: 130, sorter: (a, b) => toNum(a.max_weight_lb) - toNum(b.max_weight_lb), align: "right" },
     { title: "Style", dataIndex: "style", width: 110, sorter: (a, b) => toStr(a.style).localeCompare(toStr(b.style)) },
     { title: "Vendor", dataIndex: "vendor", width: 140, sorter: (a, b) => toStr(a.vendor).localeCompare(toStr(b.vendor)) },

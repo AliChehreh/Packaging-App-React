@@ -6,13 +6,14 @@ from backend.db.models import Order, OrderLine
 from backend.db.oes_read import fetch_order_from_oes  # uses OES engine & SQL, normalized fields  :contentReference[oaicite:1]{index=1}
 
 
-def _to_int_round(x):
+def _to_decimal_round(x):
+    """Convert to decimal with 3 decimal places, handling None values."""
     if x is None:
-        return 0
+        return 0.0
     try:
-        return int(round(float(x)))
+        return round(float(x), 3)
     except Exception:
-        return 0
+        return 0.0
 
 
 def ensure_order_in_app(db: Session, order_no: str) -> Order:
@@ -43,8 +44,8 @@ def ensure_order_in_app(db: Session, order_no: str) -> Order:
         db.add(OrderLine(
             order_id=order.id,
             product_code=ln.get("product_code"),
-            length_in=_to_int_round(ln.get("length_in")),
-            height_in=_to_int_round(ln.get("height_in")),
+            length_in=_to_decimal_round(ln.get("length_in")),
+            height_in=_to_decimal_round(ln.get("height_in")),
             finish=ln.get("finish"),
             qty_ordered=int(ln.get("qty_ordered") or 0),
             build_note=ln.get("build_note"),
