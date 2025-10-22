@@ -40,6 +40,11 @@ import {
 } from "../api/packs";
 import { listCartonTypes } from "../api/cartons";
 
+// Import lead time logos
+import threeDayLogo from "../assets/Rectangle - 3 Day - New Red.png";
+import fridayNextLogo from "../assets/Rectangle - Friday - New Red .png";
+import standardLogo from "../assets/Rectangle - Standard - New Red.png";
+
 // Helper function to format dimensions with max 3 decimal places
 function formatDimension(value) {
   if (value === null || value === undefined) return value;
@@ -55,6 +60,23 @@ function formatDimension(value) {
   }
   
   return formatted;
+}
+
+// Helper function to get lead time logo
+function getLeadTimeLogo(leadTimePlan) {
+  if (!leadTimePlan) return null;
+  
+  const plan = leadTimePlan.toLowerCase().trim();
+  
+  if (plan.includes('3 day') || plan.includes('3-day')) {
+    return threeDayLogo;
+  } else if (plan.includes('friday') && plan.includes('next')) {
+    return fridayNextLogo;
+  } else if (plan.includes('standard')) {
+    return standardLogo;
+  }
+  
+  return null;
 }
 
 function AddBoxModal({ visible, onClose, packId, onBoxAdded }) {
@@ -184,7 +206,11 @@ export default function Orders() {
       const data = await getOesOrder(value.trim());
       setOesData(data);
       setOrderNo(value.trim());
-      setMode("preview");
+      // Clear previous pack data
+      setPack(null);
+      setActiveBoxId(null);
+      // Go directly to pack mode instead of preview - pass the order number directly
+      await handleStartPack(value.trim());
     } catch {
       message.error("Order not found in OES");
     } finally {
@@ -192,20 +218,33 @@ export default function Orders() {
     }
   }
 
-  async function handleStartPack() {
+  async function handleStartPack(orderNumber = null) {
     setLoading(true);
     try {
-      const res = await startPack(orderNo.trim());
+      const orderToUse = orderNumber || orderNo;
+      console.log("Starting pack for order:", orderToUse); // Debug log
+      const res = await startPack(orderToUse.trim());
+      console.log("Pack started successfully:", res); // Debug log
       const snap = await getPackSnapshot(res.pack_id);
       if (snap.header.status === "complete") message.info("This order has already been packed and marked complete.");
       setPack(snap);
       setMode("pack");
       setActiveBoxId(null);
     } catch (err) {
+      console.error("Error starting pack:", err); // Debug log
       message.error(err.response?.data?.detail || err.message);
     } finally {
       setLoading(false);
     }
+  }
+
+  // Reset function for new orders
+  function handleNewOrder() {
+    setMode("scan");
+    setOrderNo("");
+    setOesData(null);
+    setPack(null);
+    setActiveBoxId(null);
   }
 
   const lineColumns = [
@@ -233,24 +272,13 @@ export default function Orders() {
     </div>
   );
 
-  if (mode === "preview") return (
-    <div style={{ padding: 24 }}>
-      <Card title={`Order #${orderNo}`} style={{ marginBottom: 16 }}>
-        <p><b>Customer:</b> {oesData?.header?.customer_name}</p>
-        <p><b>Ship To:</b> {oesData?.header?.ship_name}</p>
-        <p><b>Due Date:</b> {oesData?.header?.due_date}</p>
-      </Card>
-      <Table rowKey={(r, i) => `${r.product_code}-${i}`} dataSource={oesData?.lines || []} columns={lineColumns} pagination={false} />
-      <div style={{ marginTop: 16 }}>
-        <Space>
-          <Button type="primary" onClick={handleStartPack}>Start Pack</Button>
-          <Button onClick={() => setMode("scan")}>Back</Button>
-        </Space>
-      </div>
-    </div>
-  );
 
   if (mode === "pack") {
+    // Safety check - don't render if we don't have pack data or if order numbers don't match
+    if (!pack || !oesData || pack.header.order_no !== orderNo) {
+      return <div style={{ textAlign: "center", marginTop: 100 }}><Spin size="large" /></div>;
+    }
+    
     const packId = pack.header.pack_id;
     const isComplete = pack.header.status === "complete";
 
@@ -342,18 +370,102 @@ export default function Orders() {
 
     return (
       <div style={{ padding: 24 }}>
-        <Card title={`Packing Order #${pack.header.order_no}`} 
-          extra={
-    <Space>
+        <Collapse 
+          defaultActiveKey={['order-info']}
+          style={{ 
+            marginBottom: 16,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+            borderRadius: '12px',
+            overflow: 'hidden'
+          }}
+        >
+          <Collapse.Panel 
+            key="order-info"
+            header={
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                width: '100%',
+                padding: '8px 0'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <div style={{
+                    background: 'linear-gradient(135deg, #1677ff 0%, #4096ff 100%)',
+                    color: 'white',
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    fontWeight: '600',
+                    fontSize: '16px',
+                    boxShadow: '0 2px 4px rgba(22, 119, 255, 0.3)'
+                  }}>
+                    Packing Order #{pack.header.order_no}
+                  </div>
+                  <div style={{ color: '#666', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <span style={{ fontWeight: '500' }}>Customer:</span> {pack.header.customer_name}
+                    <span style={{ fontWeight: '500' }}>Status:</span> 
+                    <span style={{ 
+                      color: isComplete ? "#52c41a" : "#1677ff", 
+                      fontWeight: '600',
+                      marginLeft: '4px',
+                      padding: '2px 8px',
+                      background: isComplete ? '#f6ffed' : '#e6f7ff',
+                      borderRadius: '4px',
+                      border: `1px solid ${isComplete ? '#b7eb8f' : '#91d5ff'}`
+                    }}>
+                      {pack.header.status.toUpperCase()}
+                    </span>
+                    <span style={{ fontWeight: '500' }}>Due Date:</span>
+                    <span style={{ 
+                      color: '#333', 
+                      padding: '2px 8px', 
+                      background: '#e6f7ff', 
+                      borderRadius: '4px',
+                      border: '1px solid #91d5ff'
+                    }}>
+                      {oesData?.header?.due_date}
+                    </span>
+                    <span style={{ fontWeight: '500' }}>Lead Time:</span>
+                    {getLeadTimeLogo(oesData?.header?.lead_time_plan) ? (
+                      <img 
+                        src={getLeadTimeLogo(oesData?.header?.lead_time_plan)} 
+                        alt={oesData?.header?.lead_time_plan || 'Lead Time'}
+                        style={{ 
+                          height: '20px', 
+                          width: 'auto',
+                          maxWidth: '100px',
+                          objectFit: 'contain'
+                        }}
+                      />
+                    ) : (
+                      <span style={{ color: '#333' }}>{oesData?.header?.lead_time_plan || ''}</span>
+                    )}
+                  </div>
+                </div>
+                <Space onClick={(e) => e.stopPropagation()}>
       <Tooltip title="Download Packing Slip (PDF)">
         <Button
           icon={<DownloadOutlined />}
           onClick={handleDownloadPackingSlip}
           disabled={!isComplete}
+                      style={{ 
+                        background: isComplete ? '#52c41a' : '#f5f5f5',
+                        borderColor: isComplete ? '#52c41a' : '#d9d9d9',
+                        color: isComplete ? 'white' : '#666'
+                      }}
         />
       </Tooltip>
 
-      <Button onClick={() => setMode("scan")}>New Order</Button>
+                  <Button 
+                    onClick={handleNewOrder}
+                    style={{ 
+                      background: '#f0f0f0',
+                      borderColor: '#d9d9d9',
+                      color: '#666'
+                    }}
+                  >
+                    New Order
+                  </Button>
 
       {!isComplete && (
         <Button
@@ -361,15 +473,159 @@ export default function Orders() {
           danger
           onClick={handleCompletePack}
           disabled={!allBoxesWeighted}
+                      style={{
+                        background: allBoxesWeighted ? '#ff4d4f' : '#f5f5f5',
+                        borderColor: allBoxesWeighted ? '#ff4d4f' : '#d9d9d9',
+                        color: allBoxesWeighted ? 'white' : '#999'
+                      }}
         >
           Complete Pack
         </Button>
       )}
     </Space>
-  }
->
-          <p><b>Customer:</b> {pack.header.customer_name} | <b>Status:</b> <span style={{ color: isComplete ? "green" : "#1677ff" }}>{pack.header.status.toUpperCase()}</span></p>
-        </Card>
+              </div>
+            }
+            style={{
+              border: 'none',
+              borderRadius: '0',
+              backgroundColor: '#ffffff'
+            }}
+          >
+            <div style={{ 
+              padding: '10px',
+              background: 'linear-gradient(135deg, #fafbff 0%, #f0f8ff 100%)',
+              borderTop: '1px solid #e6f7ff'
+            }}>
+              {/* Combined Customer and Shipping Information */}
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: '1fr 1fr', 
+                gap: '24px',
+                padding: '20px',
+                background: '#ffffff',
+                borderRadius: '12px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                border: '1px solid #f0f0f0'
+              }}>
+                {/* Customer Information Column */}
+                <div>
+                  <h4 style={{ 
+                    margin: '0 0 16px 0', 
+                    color: '#1677ff', 
+                    fontSize: '18px',
+                    fontWeight: '600',
+                    borderBottom: '2px solid #e6f7ff',
+                    paddingBottom: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <span style={{
+                      background: '#1677ff',
+                      color: 'white',
+                      borderRadius: '50%',
+                      width: '24px',
+                      height: '24px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '12px',
+                      fontWeight: 'bold'
+                    }}>C</span>
+                    Bill To
+                  </h4>
+                  <p style={{ margin: '0 0 8px 0', fontSize: '14px' }}>
+                    <span style={{ fontWeight: '600', color: '#666' }}>Name:</span>{' '}
+                    <span style={{ color: '#333' }}>{oesData?.header?.customer_name || pack.header.customer_name}</span>
+                  </p>
+                  <p style={{ margin: '0 0 8px 0', fontSize: '14px' }}>
+                    <span style={{ fontWeight: '600', color: '#666' }}>Address:</span>{' '}
+                    <span style={{ color: '#333' }}>
+                      {[
+                        oesData?.header?.customer_address1,
+                        oesData?.header?.customer_address2,
+                        oesData?.header?.customer_city,
+                        oesData?.header?.customer_province,
+                        oesData?.header?.customer_country,
+                        oesData?.header?.customer_postal_code
+                      ].filter(Boolean).join(', ')}
+                    </span>
+                  </p>
+                  <p style={{ margin: '0 0 8px 0', fontSize: '14px' }}>
+                    <span style={{ fontWeight: '600', color: '#666' }}>Phone:</span>{' '}
+                    <span style={{ color: '#333' }}>{oesData?.header?.customer_phone || ''}</span>
+                  </p>
+                  <p style={{ margin: '0 0 8px 0', fontSize: '14px' }}>
+                    <span style={{ fontWeight: '600', color: '#666' }}>Sales Rep:</span>{' '}
+                    <span style={{ color: '#333' }}>{oesData?.header?.sales_rep_name || ''}</span>
+                  </p>
+                </div>
+                
+                {/* Shipping Information Column */}
+                <div>
+                  <h4 style={{ 
+                    margin: '0 0 16px 0', 
+                    color: '#52c41a', 
+                    fontSize: '18px',
+                    fontWeight: '600',
+                    borderBottom: '2px solid #f6ffed',
+                    paddingBottom: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <span style={{
+                      background: '#52c41a',
+                      color: 'white',
+                      borderRadius: '50%',
+                      width: '24px',
+                      height: '24px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '12px',
+                      fontWeight: 'bold'
+                    }}>S</span>
+                    Ship To
+                  </h4>
+                  <p style={{ margin: '0 0 8px 0', fontSize: '14px' }}>
+                    <span style={{ fontWeight: '600', color: '#666' }}>Name:</span>{' '}
+                    <span style={{ color: '#333' }}>{oesData?.header?.ship_name || ''}</span>
+                  </p>
+                  <p style={{ margin: '0 0 8px 0', fontSize: '14px' }}>
+                    <span style={{ fontWeight: '600', color: '#666' }}>Address:</span>{' '}
+                    <span style={{ color: '#333' }}>
+                      {[
+                        oesData?.header?.ship_address1,
+                        oesData?.header?.ship_address2,
+                        oesData?.header?.ship_city,
+                        oesData?.header?.ship_province,
+                        oesData?.header?.ship_country,
+                        oesData?.header?.ship_postal_code
+                      ].filter(Boolean).join(', ')}
+                    </span>
+                  </p>
+                  <p style={{ margin: '0 0 8px 0', fontSize: '14px' }}>
+                    <span style={{ fontWeight: '600', color: '#666' }}>Attention:</span>{' '}
+                    <span style={{ color: '#333' }}>{oesData?.header?.ship_attention || ''}</span>
+                  </p>
+                  <p style={{ margin: '0 0 8px 0', fontSize: '14px' }}>
+                    <span style={{ fontWeight: '600', color: '#666' }}>Phone:</span>{' '}
+                    <span style={{ color: '#333' }}>{oesData?.header?.ship_phone || ''}</span>
+                  </p>
+                  <p style={{ margin: '0 0 8px 0', fontSize: '14px' }}>
+                    <span style={{ fontWeight: '600', color: '#666' }}>Email:</span>{' '}
+                    <span style={{ color: '#333' }}>{oesData?.header?.ship_email || ''}</span>
+                  </p>
+                  <p style={{ margin: '0 0 8px 0', fontSize: '14px' }}>
+                    <span style={{ fontWeight: '600', color: '#666' }}>Ship By:</span>{' '}
+                    <span style={{ color: '#333' }}>{oesData?.header?.ship_by || ''}</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+          </Collapse.Panel>
+        </Collapse>
 
         <div style={{ display: "flex", gap: 16, marginTop: 16 }}>
           <Card title="Order Lines" style={{ flex: 1 }}>

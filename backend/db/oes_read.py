@@ -16,11 +16,11 @@ HEADER_SQL = text("""
     SELECT
         -- Order basics
         CAST(so.[SalesOrderID] AS NVARCHAR(50))       AS order_no,
-        sot.[Name]                                     AS order_type_name,
+        sot.[Name]                   AS lead_time_plan,
         so.[CustomerPONo]                              AS po_number,
         so.[OrderDate]                                 AS order_date,
         so.[DueDate]                                   AS due_date,
-        so.[SelectedShippingMethod]                    AS lead_time_plan,
+        so.[selectedShippingMethod]                    AS selected_shipping_method,
 
         -- Customer / Bill-To (left column)
         so.[ClientName]                                AS customer_name,

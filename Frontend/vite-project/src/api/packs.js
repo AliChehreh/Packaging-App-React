@@ -5,7 +5,11 @@ import axios from "axios";
 const API_BASE = "http://localhost:8000/api";
 
 export async function startPack(orderNo) {
-  const res = await axios.post(`${API_BASE}/pack/start`, { order_no: orderNo });
+  console.log("API: Starting pack with order_no:", orderNo); // Debug log
+  const payload = { order_no: orderNo };
+  console.log("API: Sending payload:", payload); // Debug log
+  const res = await axios.post(`${API_BASE}/pack/start`, payload);
+  console.log("API: Response received:", res.data); // Debug log
   return res.data;
 }
 
