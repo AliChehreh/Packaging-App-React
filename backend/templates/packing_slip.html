@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Packing Slip - {{ order_no }}</title>
+    <style>
+        @page {
+            size: Letter;
+            margin: 0.25in 0.25in 0.25in 0.25in;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        @font-face {
+            font-family: 'Code128';
+            src: url('{{ assets["code128.ttf"] }}') format('truetype');
+        }
+        
+        body {
+            font-family: Calibri, Arial, sans-serif;
+            font-size: 11pt;
+            line-height: 1.4;
+            color: #000;
+        }
+        
+        .container {
+            width: 100%;
+            max-width: 8.5in;
+            margin: 0 auto;
+        }
+        
+        /* Header Section */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #000;
+            padding: 15px 0;
+            margin-bottom: 15px;
+        }
+        
+        .logo-section {
+            display: flex;
+            align-items: center;
+        }
+        
+        .logo {
+            height: 40px;
+            width: auto;
+        }
+        
+        .shipping-badge {
+            height: 70px;
+            width: auto;
+        }
+        
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 60px;
+        }
+        
+        .barcode {
+            font-family: 'Code128', monospace;
+            font-size: 36pt;
+            letter-spacing: 3px;
+            line-height: 1;
+            display: inline-block;
+        }
+        
+        .packing-info {
+            text-align: center;
+        }
+        
+        .packing-label {
+            font-size: 18pt;
+            font-weight: bold;
+            color: #000;
+            line-height: 1;
+        }
+        
+        .order-number {
+            font-size: 16pt;
+            font-weight: bold;
+            color: #000;
+            margin-top: 2px;
+        }
+        
+        /* Title */
+        .title {
+            text-align: center;
+            font-size: 20pt;
+            font-weight: bold;
+            margin: 15px 0;
+            text-transform: uppercase;
+        }
+        
+        /* Address Section */
+        .address-section {
+            margin-bottom: 15px;
+        }
+        
+        .address-top-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        
+        .address-left {
+            flex: 1;
+        }
+        
+        .address-center {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .address-right {
+            flex: 1;
+        }
+        
+        .address-block h3 {
+            font-size: 11pt;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .address-content {
+            font-size: 10pt;
+            line-height: 1.5;
+        }
+        
+        .info-row {
+            display: flex;
+            align-items: center;
+        }
+        
+        .info-label {
+            font-weight: bold;
+            font-size: 10pt;
+            margin-right: 8px;
+        }
+        
+        .info-value {
+            font-size: 10pt;
+        }
+        
+        .address-middle-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        
+        .order-date-section {
+            display: flex;
+            align-items: center;
+        }
+        
+        .attn-section {
+            display: flex;
+            align-items: center;
+        }
+        
+        .address-separator {
+            width: 100%;
+            height: 1px;
+            background-color: #000;
+            margin: 10px 0;
+        }
+        
+        .address-bottom-row {
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .ship-via-section {
+            display: flex;
+            align-items: center;
+        }
+        
+        .shipped-date-section {
+            display: flex;
+            align-items: center;
+        }
+        
+        /* Shipping Info Bar */
+        .shipping-bar {
+            display: flex;
+            justify-content: space-between;
+            background-color: #f5f5f5;
+            padding: 8px 15px;
+            margin: 15px 0;
+            border: 1px solid #000000;
+        }
+        
+        .shipping-item {
+            font-size: 10pt;
+        }
+        
+        .shipping-label {
+            font-weight: bold;
+            margin-right: 5px;
+        }
+        
+        /* Box Summary Table */
+        .section-title {
+            font-size: 13pt;
+            font-weight: bold;
+            margin: 15px 0 8px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .delivery-badge img {
+            height: 30px;
+            width: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 5px;
+        }
+        
+        thead {
+            background-color: #BFBFBF;
+            color: black;
+            margin: 1px;
+        }
+        
+        th {
+            padding: 6px 4px;
+            text-align: left;
+            font-weight: bold;
+            font-size: 10pt;
+            border: 0px solid #BFBFBF;
+        }
+        
+        td {
+            padding: 6px 4px;
+            font-size: 11pt;
+            border: 0px solid #ddd;
+            vertical-align: top;
+            margin: 0px;
+        }
+        
+        tbody tr:nth-child(even) {
+            background-color: white;
+        }
+        
+        tbody tr:nth-child(odd) {
+            background-color: #EBEBEB;
+        }
+        
+        .product-tag {
+            font-size: 10pt;
+            font-style: italic;
+            color: #333;
+            display: block;
+            margin-top: 2px;
+        }
+        
+        /* Column widths */
+        .col-box { width: 8%;text-align: center; }
+        .col-qty { width: 8%; text-align: center; }
+        .col-code { width: 15%;text-align: center; }
+        .col-dims { width: 12%; text-align: center; }
+        .col-finish { width: 12%;text-align: center; }
+        
+        /* Footer */
+        .footer {
+            position: fixed;
+            bottom: 0.25in;
+            left: 0.25in;
+            right: 0.25in;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-top: 1px solid #ccc;
+            background-color: white;
+            z-index: 1000;
+        }
+        
+        .footer-left {
+            font-size: 9pt;
+            color: #666;
+            flex: 1;
+            text-align: left;
+        }
+        
+        .footer-center {
+            flex: 1;
+            text-align: center;
+        }
+        
+        .footer-center img {
+            height: 30px;
+            width: auto;
+        }
+        
+        .footer-right {
+            flex: 1;
+            text-align: right;
+        }
+        
+        .footer-right img {
+            height: 35px;
+            width: auto;
+        }
+        
+        /* Print-specific styles */
+        @media print {
+            body {
+                print-color-adjust: exact;
+                -webkit-print-color-adjust: exact;
+                font-size: 11pt;
+            }
+            
+            .container {
+                width: 100%;
+                max-width: 7.5in; /* 8.5in - 1in margins */
+                margin: 0 auto;
+            }
+            
+            .footer {
+                position: fixed;
+                bottom: 0.25in;
+                left: 0.25in;
+                right: 0.25in;
+                width: 7.5in;
+            }
+            
+            /* Ensure content doesn't overlap with footer */
+            .content {
+                margin-bottom: 1in;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="content">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo-section">
+                <!-- Dayus Logo -->
+                <img src="{{ assets['dayus-logo.svg'] }}" class="logo" alt="Dayus Logo">
+            </div>
+            
+            <!-- 3 DAY SHIP Badge -->
+            <img src="{{ assets['Square - 3 Day - New Red.png'] }}" class="shipping-badge" alt="3 Day Ship">
+            
+            <div class="header-right">
+                <div class="barcode">*{{ order_no }}*</div>
+                <div class="packing-info">
+                    <div class="packing-label">PACKING</div>
+                    <div class="order-number">{{ order_no }}</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Title -->
+        <div class="title">Packing Slip</div>
+        
+        <!-- Address Section -->
+        <div class="address-section">
+            <!-- Top Row -->
+            <div class="address-top-row">
+                <!-- Bill To -->
+                <div class="address-left">
+                    <h3>Bill To:</h3>
+                    <div class="address-content">
+                        <strong>{{ customer_name }}</strong><br>
+                        {{ customer_address1 }}<br>
+                        {% if customer_address2 %}{{ customer_address2 }}<br>{% endif %}
+                        {{ customer_city }}; {{ customer_province }}<br>
+                        {{ customer_country }}; {{ customer_postal_code }}<br>
+                        {{ customer_phone }}<br>
+                        {{ sales_rep_name }}
+                    </div>
+                </div>
+                
+                <!-- Center Info -->
+                <div class="address-center">
+                    <div class="info-row">
+                        <span class="info-label">Project:</span>
+                        <span class="info-value">{{ project_name or '' }}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">PO#:</span>
+                        <span class="info-value">{{ po_number or '' }}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Tag:</span>
+                        <span class="info-value">{{ tag or '' }}</span>
+                    </div>
+                </div>
+                
+                <!-- Ship To -->
+                <div class="address-right">
+                    <h3>Ship to:</h3>
+                    <div class="address-content">
+                        <strong>{{ ship_name }}</strong><br>
+                        {{ ship_address1 }}<br>
+                        {% if ship_address2 and ship_address2.strip() %}{{ ship_address2 }}<br>{% endif %}
+                        {{ ship_city }}; {{ ship_province }}<br>
+                        {{ ship_postal_code }} {{ ship_country }}<br>
+                        <br>
+                        <strong>Attn:</strong> {{ ship_attention or '' }}<br>
+                        {{ ship_phone }}<br>
+                        {{ ship_email }}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Middle Row -->
+            <div class="address-middle-row">
+                <div class="order-date-section">
+                    <span class="info-label">Order Date:</span>
+                    <span class="info-value">{{ order_date }}</span>
+                </div>
+ 
+            </div>
+            
+            <!-- Separator Line -->
+            <div class="address-separator"></div>
+            
+            <!-- Bottom Row -->
+            <div class="address-bottom-row">
+                <div class="ship-via-section">
+                    <span class="info-label">Ship via:</span>
+                    <span class="info-value">{{ ship_by }}</span>
+                </div>
+                <div class="shipped-date-section">
+                    <span class="info-label">Shipped Date:</span>
+                    <span class="info-value">{{ ship_by_date or '' }}</span>
+                </div>
+            </div>
+            <!-- Separator Line -->
+            <div class="address-separator"></div>
+        </div>
+        
+        <!-- Box Summary Table -->
+        <div class="section-title">
+            Box Summary
+            <span class="delivery-badge">
+                {% if '3 Day' in lead_time_plan or '3Day' in lead_time_plan %}
+                    <img src="{{ assets['Rectangle - 3 Day - New Red.png'] }}" alt="3 Day Delivery">
+                {% elif 'Friday' in lead_time_plan %}
+                    <img src="{{ assets['Rectangle - Friday - New Red .png'] }}" alt="Friday Delivery">
+                {% else %}
+                    <img src="{{ assets['Rectangle - Standard - New Red.png'] }}" alt="Standard Delivery">
+                {% endif %}
+            </span>
+        </div>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th class="col-box">Box #</th>
+                    <th class="col-qty">Qty<br>Ordered</th>
+                    <th class="col-qty">Qty<br>Shipped</th>
+                    <th class="col-qty">Qty<br>Backordered</th>
+                    <th class="col-code">Code</th>
+                    <th class="col-dims">Length x Height</th>
+                    <th class="col-finish">Finish</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for group in grouped_items %}
+                <tr>
+                    <td class="col-box">{{ group.box_display }}</td>
+                    <td class="col-qty">{{ group.qty_ordered }}</td>
+                    <td class="col-qty">{{ group.qty_shipped }}</td>
+                    <td class="col-qty"></td>
+                    <td class="col-code">
+                        {{ group.product_code }}
+                        {% if group.product_tag %}
+                        <span class="product-tag">{{ group.product_tag }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="col-dims">{{ group.length_in }} x {{ group.height_in }}</td>
+                    <td class="col-finish">{{ group.finish }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    
+    <!-- Footer -->
+    <div class="footer">
+        <div class="footer-left">
+            Page {{ current_page }} of {{ total_pages }}
+        </div>
+        <div class="footer-center">
+            <img src="{{ assets['footer.png'] }}" alt="Footer">
+        </div>
+        <div class="footer-right">
+            <img src="{{ assets['dayus-mark.png'] }}" alt="Dayus Mark">
+        </div>
+    </div>
+</body>
+</html>

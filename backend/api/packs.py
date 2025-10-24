@@ -2,6 +2,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from backend.services.report import generate_packing_slip_via_excel
+from backend.services.report_html import generate_packing_slip_pdf
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import func, select
@@ -332,6 +333,148 @@ def export_packing_slip_pdf(pack_id: int):
         media_type="application/pdf",
         filename=f"packing_slip_{pack_id}.pdf",
     )
+
+
+@router.get("/{pack_id}/html-packing-slip.pdf")
+def export_html_packing_slip_pdf(pack_id: int, db: Session = Depends(get_db)):
+    """
+    Generate a packing slip PDF using HTML template and Playwright.
+    
+    Process:
+    1. Fetch packing data from database (OES + app DB)
+    2. Group identical items for display
+    3. Render HTML template with Jinja2
+    4. Convert HTML to PDF using Playwright (with full image support)
+    5. Return PDF file for download
+    
+    Returns:
+        FileResponse: PDF file download
+    """
+    try:
+        # Fetch packing slip data
+        data = get_packing_slip_data(pack_id)
+        if not data:
+            raise HTTPException(404, f"Pack {pack_id} not found")
+        
+        # Generate PDF from HTML template using Playwright
+        pdf_path = generate_packing_slip_pdf(data, pack_id)
+        
+        # Verify PDF was created
+        if not pdf_path or not os.path.exists(pdf_path):
+            raise HTTPException(500, "PDF generation failed - file not created")
+        
+        # Return PDF file
+        return FileResponse(
+            path=pdf_path,
+            media_type="application/pdf",
+            filename=f"packing_slip_{pack_id}.pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=packing_slip_{pack_id}.pdf"
+            }
+        )
+    
+    except ValueError as e:
+        # Database/validation errors
+        raise HTTPException(status_code=404, detail=str(e))
+    
+    except FileNotFoundError as e:
+        # Template file missing
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Template not found: {str(e)}"
+        )
+    
+    except Exception as e:
+        # Unexpected errors
+        import traceback
+        error_detail = f"PDF generation error: {str(e)}\n{traceback.format_exc()}"
+        print(error_detail)  # Log to console for debugging
+        raise HTTPException(
+            status_code=500,
+            detail=f"PDF generation error: {str(e)}"
+        )
+
+
+
+
+
+
+@router.get("/{pack_id}/html-preview")
+def preview_html_packing_slip(pack_id: int, db: Session = Depends(get_db)):
+    """
+    Preview the HTML packing slip before PDF conversion.
+    
+    This endpoint renders the HTML template with all assets embedded as base64,
+    allowing you to see exactly how the packing slip will look before generating the PDF.
+    
+    Returns:
+        HTMLResponse: Rendered HTML packing slip
+    """
+    from fastapi.responses import HTMLResponse
+    from jinja2 import Environment, FileSystemLoader, select_autoescape
+    import os
+    
+    try:
+        # Fetch packing slip data
+        data = get_packing_slip_data(pack_id)
+        if not data:
+            raise HTTPException(404, f"Pack {pack_id} not found")
+        
+        # Setup Jinja2 environment
+        templates_dir = os.path.join(
+            os.path.dirname(__file__), 
+            "..", 
+            "templates"
+        )
+        
+        env = Environment(
+            loader=FileSystemLoader(templates_dir),
+            autoescape=select_autoescape(['html', 'xml'])
+        )
+        
+        # Load template
+        template = env.get_template('packing_slip.html')
+        
+        # Group items for display (same logic as PDF generation)
+        from backend.services.report_html import group_items_for_display, load_assets_as_base64
+        
+        grouped_items = group_items_for_display(data.get('items', []))
+        
+        # Load assets as base64
+        assets = load_assets_as_base64()
+        
+        # Calculate total pages
+        total_pages = 1
+        current_page = 1
+        
+        # Prepare template data
+        template_data = {
+            **data,  # Include all original data
+            'grouped_items': grouped_items,
+            'current_page': current_page,
+            'total_pages': total_pages,
+            'assets': assets,  # Include base64 assets
+        }
+        
+        # Render HTML
+        html_content = template.render(**template_data)
+        
+        # Return HTML response
+        return HTMLResponse(
+            content=html_content,
+            status_code=200,
+            headers={
+                "Content-Type": "text/html; charset=utf-8"
+            }
+        )
+    
+    except ValueError as e:
+        # Database/validation errors
+        raise HTTPException(status_code=404, detail=str(e))
+    
+    except Exception as e:
+        # Other errors (template rendering, asset loading, etc.)
+        raise HTTPException(status_code=500, detail=f"HTML preview failed: {str(e)}")
 
 
 @router.get("/{pack_id}/report-data")
