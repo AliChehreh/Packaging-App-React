@@ -105,6 +105,12 @@ function AddBoxModal({ visible, onClose, packId, onBoxAdded }) {
           : { carton_type_id: values.carton_type_id };
 
       const res = await createBox(packId, body);
+      
+      // Set weight if provided
+      if (values.weight) {
+        await setBoxWeight(packId, res.id, values.weight);
+      }
+      
       message.success("Box created");
       await onBoxAdded(res.id);
       form.resetFields();
@@ -123,7 +129,16 @@ function AddBoxModal({ visible, onClose, packId, onBoxAdded }) {
       onOk={handleOk}
       onCancel={onClose}
       okText="Add Box"
+      cancelText="Cancel"
       destroyOnClose
+      footer={[
+        <Button key="add" type="primary" onClick={handleOk}>
+          Add Box
+        </Button>,
+        <Button key="cancel" onClick={onClose}>
+        Cancel
+      </Button>,
+]}
     >
       <Radio.Group
         value={mode}
@@ -138,7 +153,7 @@ function AddBoxModal({ visible, onClose, packId, onBoxAdded }) {
         {mode === "custom" ? (
           <>
             <Form.Item label="Length (in)" name="length_in" rules={[{ required: true, message: "Enter length" }]}>
-              <InputNumber min={1} style={{ width: "100%" }} />
+              <InputNumber min={1} style={{ width: "100%" }} autoFocus />
             </Form.Item>
             <Form.Item label="Width (in)" name="width_in" rules={[{ required: true, message: "Enter width" }]}>
               <InputNumber min={1} style={{ width: "100%" }} />
@@ -146,24 +161,32 @@ function AddBoxModal({ visible, onClose, packId, onBoxAdded }) {
             <Form.Item label="Height (in)" name="height_in" rules={[{ required: true, message: "Enter height" }]}>
               <InputNumber min={1} style={{ width: "100%" }} />
             </Form.Item>
+            <Form.Item label="Weight (lb)" name="weight">
+              <InputNumber min={0} step={0.1} style={{ width: "100%" }} placeholder="Optional" />
+            </Form.Item>
           </>
         ) : (
-          <Form.Item label="Select Carton Type" name="carton_type_id" rules={[{ required: true, message: "Select a carton" }]}>
-            <Select
-              showSearch
-              placeholder="Search or select a carton"
-              optionFilterProp="children"
-              filterOption={(input, option) =>
-                option.children.toLowerCase().includes(input.toLowerCase())
-              }
-            >
-              {cartons.map((c) => (
-                <Select.Option key={c.id} value={c.id}>
-                  {c.name} ({formatDimension(c.length_in)}×{formatDimension(c.width_in)}×{formatDimension(c.height_in)} in, max {c.max_weight_lb} lb)
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
+          <>
+            <Form.Item label="Select Carton Type" name="carton_type_id" rules={[{ required: true, message: "Select a carton" }]}>
+              <Select
+                showSearch
+                placeholder="Search or select a carton"
+                optionFilterProp="children"
+                filterOption={(input, option) =>
+                  option.children.toLowerCase().includes(input.toLowerCase())
+                }
+              >
+                {cartons.map((c) => (
+                  <Select.Option key={c.id} value={c.id}>
+                    {c.name} ({formatDimension(c.length_in)}×{formatDimension(c.width_in)}×{formatDimension(c.height_in)} in, max {c.max_weight_lb} lb)
+                  </Select.Option>
+                ))}
+              </Select>
+            </Form.Item>
+            <Form.Item label="Weight (lb)" name="weight">
+              <InputNumber min={0} step={0.1} style={{ width: "100%" }} placeholder="Optional" />
+            </Form.Item>
+          </>
         )}
       </Form>
     </Modal>
@@ -178,6 +201,59 @@ export default function Orders() {
   const [pack, setPack] = useState(null);
   const [activeBoxId, setActiveBoxId] = useState(null);
   const [showAddBoxModal, setShowAddBoxModal] = useState(false);
+
+  // Calculate isComplete early
+  const isComplete = pack?.header?.status === "complete";
+
+  // Keyboard shortcuts for pack mode
+  useEffect(() => {
+    const handleKeyPress = async (event) => {
+      // Don't trigger if user is typing in an input field
+      if (event.target.tagName === "INPUT" || event.target.tagName === "TEXTAREA") {
+        return;
+      }
+
+      // Only trigger in pack mode
+      if (!pack || isComplete) return;
+
+      // "+" key to open Add Box modal
+      if (event.key === "+" && !showAddBoxModal) {
+        setShowAddBoxModal(true);
+      }
+
+      // Ctrl+D or Cmd+D to duplicate active box (if we have an active box)
+      if ((event.ctrlKey || event.metaKey) && event.key === "d" && activeBoxId) {
+        event.preventDefault(); // Prevent browser's bookmark shortcut
+        try {
+          message.loading({ content: "Duplicating box...", key: "duplicate" });
+          const snap = await duplicateBox(pack.header.pack_id, activeBoxId);
+          setPack(snap);
+          message.success({ content: "Box duplicated successfully", key: "duplicate", duration: 2 });
+          // Set the new box as active (it will be the last one in the list)
+          const newBoxId = snap.boxes[snap.boxes.length - 1]?.id;
+          if (newBoxId) setActiveBoxId(newBoxId);
+        } catch (err) {
+          // Check if the error contains preventing products
+          if (err.response?.data?.detail?.preventing_products) {
+            const preventingProducts = err.response.data.detail.preventing_products;
+            const productList = preventingProducts.map(p => 
+              `${p.product_code} (needs ${p.needed}, has ${p.remaining})`
+            ).join(', ');
+            message.error({ 
+              content: `Cannot duplicate: ${productList}`, 
+              key: "duplicate",
+              duration: 5
+            });
+          } else {
+            message.error({ content: err.message || "Failed to duplicate box", key: "duplicate" });
+          }
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyPress);
+    return () => window.removeEventListener("keydown", handleKeyPress);
+  }, [pack, isComplete, showAddBoxModal, activeBoxId]);
 
   const handleDeleteBox = useCallback(async (boxId) => {
     try {
@@ -280,7 +356,6 @@ export default function Orders() {
     }
     
     const packId = pack.header.pack_id;
-    const isComplete = pack.header.status === "complete";
 
     async function handleCompletePack() {
       try {
@@ -358,6 +433,7 @@ export default function Orders() {
         }
       }
     }
+
 
     async function refreshSnapshot(newBoxId = null) {
       const snap = await getPackSnapshot(pack.header.pack_id);
