@@ -6,10 +6,19 @@ Uses Jinja2 for templating and Playwright for PDF generation with proper image s
 import os
 import tempfile
 import base64
+import io
 from datetime import datetime
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from playwright.sync_api import sync_playwright
 from typing import Dict, List
+
+try:
+    from barcode import Code128
+    from barcode.writer import ImageWriter
+    BARCODE_AVAILABLE = True
+except ImportError:
+    BARCODE_AVAILABLE = False
+    print("Warning: python-barcode library not installed. Install with: pip install python-barcode[images]")
 
 
 def load_assets_as_base64() -> Dict[str, str]:
@@ -68,6 +77,47 @@ def load_assets_as_base64() -> Dict[str, str]:
             assets[asset_file] = ""
     
     return assets
+
+
+def generate_barcode_base64(text: str) -> str:
+    """
+    Generate a Code128 barcode as base64 data URI.
+    
+    Args:
+        text: The text to encode in the barcode
+        
+    Returns:
+        str: Base64 data URI for the barcode image
+    """
+    if not BARCODE_AVAILABLE:
+        # Fallback: return empty string if barcode library not available
+        return ""
+    
+    try:
+        # Create Code128 barcode
+        code = Code128(text, writer=ImageWriter())
+        
+        # Generate barcode to bytes with custom dimensions
+        buffer = io.BytesIO()
+        code.write(buffer, options={
+            'module_width': 0.9,  # Triple the width (0.3 * 3)
+            'module_height': 10.0,  # Half the height (20.0 / 2)
+            'quiet_zone': 10.0,  # Larger quiet zone for scanner compatibility
+            'background': 'white',
+            'foreground': 'black',
+            'write_text': False,  # Remove the order number text
+        })
+        
+        # Convert to base64
+        buffer.seek(0)
+        barcode_data = buffer.getvalue()
+        base64_data = base64.b64encode(barcode_data).decode('utf-8')
+        
+        return f"data:image/png;base64,{base64_data}"
+        
+    except Exception as e:
+        print(f"Error generating barcode: {e}")
+        return ""
 
 
 def group_items_for_display(items: List[Dict]) -> List[Dict]:
@@ -192,6 +242,9 @@ def generate_packing_slip_pdf(data: Dict, pack_id: int) -> str:
     # Load assets as base64
     assets = load_assets_as_base64()
     
+    # Generate proper barcode image for scanner compatibility
+    barcode_data_uri = generate_barcode_base64(data.get('order_no', ''))
+    
     # Calculate total pages (simple calculation - 1 page for now, can be enhanced)
     total_pages = 1
     current_page = 1
@@ -203,6 +256,7 @@ def generate_packing_slip_pdf(data: Dict, pack_id: int) -> str:
         'current_page': current_page,
         'total_pages': total_pages,
         'assets': assets,  # Include base64 assets
+        'barcode_data_uri': barcode_data_uri,  # Include generated barcode
     }
     
     # Render HTML

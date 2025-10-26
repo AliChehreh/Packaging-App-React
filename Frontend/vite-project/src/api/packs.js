@@ -103,9 +103,10 @@ export async function removeItemFromBox(packId, boxId, orderLineId, qty = 1) {
   }
 }
 
-// Download packing slip PDF
+// Download packing slip PDF - Using HTML format
 export async function downloadPackingSlip(packId) {
-  const url = `${API_BASE}/pack/${packId}/packing-slip.pdf`;
+  // Force HTML-based PDF generation (not Excel)
+  const url = `${API_BASE}/pack/${packId}/html-packing-slip.pdf`;
   // If you don't need custom headers/auth, streaming is simplest:
   const a = document.createElement("a");
   a.href = url;

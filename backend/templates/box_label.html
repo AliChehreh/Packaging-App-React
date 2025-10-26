@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Box Label - Data Only</title>
+    <style>
+        @page {
+            size: 4in 6in;
+            margin: 0;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 10pt;
+            line-height: 1.2;
+            color: #000;
+            background: white;
+            width: 4in;
+            height: 6in;
+        }
+        
+        .label-container {
+            width: 4in;
+            height: 6in;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* Top section - Ship To Info */
+        .ship-to-section {
+            margin-top: 1.1in; /* Space for pre-printed header */
+            padding: 0 0.3in;
+            margin-bottom: 0.15in;
+        }
+        
+        .ship-to-content {
+            font-size: 11pt;
+            line-height: 1.4;
+            font-weight: bold;
+        }
+        
+        .info-line {
+            margin-bottom: 3px;
+        }
+        
+        .label {
+            display: inline-block;
+            width: 70px;
+            font-weight: normal;
+        }
+        
+        /* Spacer to push table to bottom */
+        .spacer {
+            flex: 1;
+        }
+        
+        /* Contents Table at bottom */
+        .contents-section {
+            margin-top: auto;
+            padding: 0 0.25in 0.55in 0.25in; /* Bottom padding for pre-printed footer */
+        }
+        
+        .contents-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .contents-table td {
+            border: none;
+            padding: 6px 4px;
+            text-align: center;
+            font-size: 10pt;
+            vertical-align: middle;
+        }
+        
+        .col-qty {
+            width: 12%;
+        }
+        
+        .col-desc {
+            width: 28%;
+            text-align: left;
+            padding-left: 8px;
+        }
+        
+        .col-dim {
+            width: 10%;
+            font-size: 9pt;
+        }
+        
+        /* Row height to match pre-printed lines */
+        .contents-table tr {
+            height: 0.48in;
+        }
+        
+        /* Print styles */
+        @media print {
+            body {
+                print-color-adjust: exact;
+                -webkit-print-color-adjust: exact;
+            }
+            
+            .label-container {
+                page-break-after: always;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="label-container">
+        <!-- Ship To Section (Top area under logo) -->
+        <div class="ship-to-section">
+            <div class="ship-to-content">
+                <div class="info-line"><strong>{{ ship_name }}</strong></div>
+                <div class="info-line">{{ ship_address1 }}</div>
+                {% if ship_address2 and ship_address2.strip() %}
+                <div class="info-line">{{ ship_address2 }}</div>
+                {% endif %}
+                <div class="info-line">{{ ship_city }}, {{ ship_province }} {{ ship_postal_code }}</div>
+                <div class="info-line">{{ ship_country }}</div>
+                <div class="info-line" style="margin-top: 8px;">
+                    <span class="label">Attn:</span> {{ ship_attention or '' }}
+                </div>
+                <div class="info-line">
+                    <span class="label">Project:</span> {{ project_name or '' }}
+                </div>
+                <div class="info-line">
+                    <span class="label">Tag:</span> {{ tag or '' }}
+                </div>
+                <div class="info-line">
+                    <span class="label">PO#:</span> {{ po_number or '' }}
+                </div>
+                <div class="info-line">
+                    <span class="label">Order #:</span> {{ order_no }}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Spacer -->
+        <div class="spacer"></div>
+        
+        <!-- Contents Table (Bottom section) -->
+        <div class="contents-section">
+            <table class="contents-table">
+                <tbody>
+                    {% for row in range(4) %}
+                    <tr>
+                        <!-- Left side (odd items: 0, 2, 4, 6) -->
+                        {% if items and row * 2 < items|length %}
+                            {% set item = items[row * 2] %}
+                            <td class="col-qty">{{ item.qty }}</td>
+                            <td class="col-desc">{{ item.product_code }}</td>
+                            <td class="col-dim">{{ item.length_in }}<br>x<br>{{ item.height_in }}</td>
+                        {% else %}
+                            <td class="col-qty"></td>
+                            <td class="col-desc"></td>
+                            <td class="col-dim"></td>
+                        {% endif %}
+                        
+                        <!-- Right side (even items: 1, 3, 5, 7) -->
+                        {% if items and (row * 2 + 1) < items|length %}
+                            {% set item = items[row * 2 + 1] %}
+                            <td class="col-qty">{{ item.qty }}</td>
+                            <td class="col-desc">{{ item.product_code }}</td>
+                            <td class="col-dim">{{ item.length_in }}<br>x<br>{{ item.height_in }}</td>
+                        {% else %}
+                            <td class="col-qty"></td>
+                            <td class="col-desc"></td>
+                            <td class="col-dim"></td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>
