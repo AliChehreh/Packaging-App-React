@@ -210,6 +210,51 @@ def group_items_for_display(items: List[Dict]) -> List[Dict]:
     return result
 
 
+def format_phone(value):
+    """
+    Format phone numbers to standard (xxx) xxx-xxxx format.
+    Removes all non-digit characters and formats accordingly.
+    Examples: 
+    - "6044204323" -> "(604) 420-4323"
+    - "(604) 420-4323" -> "(604) 420-4323"
+    - "604-420-4323" -> "(604) 420-4323"
+    """
+    if not value:
+        return ''
+    
+    # Remove all non-digit characters
+    digits = ''.join(filter(str.isdigit, str(value)))
+    
+    # If we have 10 digits, format as (xxx) xxx-xxxx
+    if len(digits) == 10:
+        return f"({digits[:3]}) {digits[3:6]}-{digits[6:]}"
+    
+    # If we have 11 digits starting with 1, format as (xxx) xxx-xxxx
+    elif len(digits) == 11 and digits[0] == '1':
+        return f"({digits[1:4]}) {digits[4:7]}-{digits[7:]}"
+    
+    # For other lengths, return as-is (might be international format)
+    return str(value)
+
+
+def format_dimension(value):
+    """
+    Format dimension values:
+    - Remove trailing zeros after decimal point
+    - Remove decimal point if value is whole number
+    Examples: 24.500 -> 24.5, 24.000 -> 24, 24.125 -> 24.125
+    """
+    if value is None:
+        return ''
+    try:
+        num = float(value)
+        # Format to 3 decimal places, then remove trailing zeros
+        formatted = f"{num:.3f}".rstrip('0').rstrip('.')
+        return formatted
+    except (ValueError, TypeError):
+        return str(value)
+
+
 def generate_packing_slip_pdf(data: Dict, pack_id: int) -> str:
     """
     Generate a packing slip PDF from HTML template using Playwright.
@@ -232,6 +277,10 @@ def generate_packing_slip_pdf(data: Dict, pack_id: int) -> str:
         loader=FileSystemLoader(templates_dir),
         autoescape=select_autoescape(['html', 'xml'])
     )
+    
+    # Add custom filters
+    env.filters['format_phone'] = format_phone
+    env.filters['format_dim'] = format_dimension
     
     # Load template
     template = env.get_template('packing_slip.html')

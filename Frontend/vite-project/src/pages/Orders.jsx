@@ -26,6 +26,7 @@ import {
   MinusOutlined,
   DoubleRightOutlined,
   DoubleLeftOutlined,
+  PrinterOutlined,
 } from "@ant-design/icons";
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -64,6 +65,27 @@ function formatDimension(value) {
   }
   
   return formatted;
+}
+
+// Helper function to format phone numbers to standard (xxx) xxx-xxxx format
+function formatPhone(value) {
+  if (!value) return '';
+  
+  // Remove all non-digit characters
+  const digits = value.toString().replace(/\D/g, '');
+  
+  // If we have 10 digits, format as (xxx) xxx-xxxx
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  
+  // If we have 11 digits starting with 1, format as (xxx) xxx-xxxx
+  if (digits.length === 11 && digits[0] === '1') {
+    return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  
+  // For other lengths, return as-is (might be international format)
+  return value;
 }
 
 // Helper function to get lead time logo
@@ -510,6 +532,28 @@ export default function Orders() {
       }
     }
 
+    async function handlePrintBoxLabel(boxId) {
+      const packId = pack.header.pack_id;
+      try {
+        // Open box label HTML in new window for printing
+        const labelUrl = `http://localhost:8000/api/pack/${packId}/boxes/${boxId}/label-html`;
+        const printWindow = window.open(labelUrl, '_blank', 'width=800,height=600');
+        
+        if (printWindow) {
+          printWindow.onload = () => {
+            // Small delay to ensure content is fully loaded
+            setTimeout(() => {
+              printWindow.print();
+            }, 500);
+          };
+        } else {
+          message.error({ content: "Please allow popups to print box labels.", key: "print" });
+        }
+      } catch (err) {
+        message.error({ content: err?.message || "Failed to print box label.", key: "print" });
+      }
+    }
+
     async function handleAssignQty(lineId, remaining) {
       if (isComplete) return;
       if (!activeBoxId) return message.info("Select a box first");
@@ -811,7 +855,7 @@ export default function Orders() {
                   </p>
                   <p style={{ margin: '0 0 8px 0', fontSize: '14px' }}>
                     <span style={{ fontWeight: '600', color: '#666' }}>Phone:</span>{' '}
-                    <span style={{ color: '#333' }}>{oesData?.header?.customer_phone || ''}</span>
+                    <span style={{ color: '#333' }}>{formatPhone(oesData?.header?.customer_phone || '')}</span>
                   </p>
                   <p style={{ margin: '0 0 8px 0', fontSize: '14px' }}>
                     <span style={{ fontWeight: '600', color: '#666' }}>Sales Rep:</span>{' '}
@@ -869,7 +913,7 @@ export default function Orders() {
                   </p>
                   <p style={{ margin: '0 0 8px 0', fontSize: '14px' }}>
                     <span style={{ fontWeight: '600', color: '#666' }}>Phone:</span>{' '}
-                    <span style={{ color: '#333' }}>{oesData?.header?.ship_phone || ''}</span>
+                    <span style={{ color: '#333' }}>{formatPhone(oesData?.header?.ship_phone || '')}</span>
                   </p>
                   <p style={{ margin: '0 0 8px 0', fontSize: '14px' }}>
                     <span style={{ fontWeight: '600', color: '#666' }}>Email:</span>{' '}
@@ -1254,32 +1298,60 @@ export default function Orders() {
                         )}
                       </div>
                     </div>
-                    {canDelete && (
-                      <Tooltip title="Delete empty box">
-                        <DeleteOutlined
-                          style={{ 
-                            color: "#ff4d4f", 
-                            fontSize: 18,
-                            cursor: 'pointer',
-                            padding: '4px',
-                            borderRadius: '4px',
-                            transition: 'all 0.2s ease'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.target.style.background = '#fff1f0';
-                            e.target.style.transform = 'scale(1.1)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.target.style.background = 'transparent';
-                            e.target.style.transform = 'scale(1)';
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteBox(b.id);
-                          }}
-                        />
-                      </Tooltip>
-                    )}
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      {canDelete && (
+                        <Tooltip title="Delete empty box">
+                          <DeleteOutlined
+                            style={{ 
+                              color: "#ff4d4f", 
+                              fontSize: 18,
+                              cursor: 'pointer',
+                              padding: '4px',
+                              borderRadius: '4px',
+                              transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.target.style.background = '#fff1f0';
+                              e.target.style.transform = 'scale(1.1)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.target.style.background = 'transparent';
+                              e.target.style.transform = 'scale(1)';
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteBox(b.id);
+                            }}
+                          />
+                        </Tooltip>
+                      )}
+                      {isComplete && totalQty > 0 && (
+                        <Tooltip title="Print Box Label">
+                          <PrinterOutlined
+                            style={{ 
+                              color: "#52c41a", 
+                              fontSize: 18,
+                              cursor: 'pointer',
+                              padding: '4px',
+                              borderRadius: '4px',
+                              transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.target.style.background = '#f6ffed';
+                              e.target.style.transform = 'scale(1.1)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.target.style.background = 'transparent';
+                              e.target.style.transform = 'scale(1)';
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handlePrintBoxLabel(b.id);
+                            }}
+                          />
+                        </Tooltip>
+                      )}
+                    </div>
                   </div>
                 );
 

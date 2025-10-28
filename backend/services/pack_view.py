@@ -739,3 +739,94 @@ def get_packing_slip_data(pack_id: int):
     slip["notes"] = order_info.get("ShippingNotes") or ""
 
     return slip
+
+
+# --- 8. Box label data assembler
+# ---------------------------------------------------------------------
+def get_box_label_data(pack_id: int, box_id: int):
+    """
+    Fetch all data needed to render a box label for a specific box.
+    
+    Returns dict with:
+    - Order info: order_no, project_name, tag, po_number
+    - Shipping info: ship_name, ship_address1, ship_address2, ship_city, 
+                     ship_province, ship_postal_code, ship_country, ship_attention
+    - Box info: box_no
+    - Items: list of {qty, product_code, length_in, height_in} for this box
+    """
+    # --- 0. Get order_no from local pack + order tables (app DB) ---
+    query_pack = text("""
+        SELECT ord.order_no
+        FROM pack
+        LEFT JOIN dbo.[order] AS ord ON pack.order_id = ord.id
+        WHERE pack.id = :pack_id
+    """)
+    with app_engine.connect() as conn:
+        order_no = conn.execute(query_pack, {"pack_id": pack_id}).scalar_one_or_none()
+
+    if not order_no:
+        raise ValueError(f"Pack {pack_id} not found or missing linked order.")
+
+    # --- 1. Get order and shipping info from OES ---
+    query_header = text("""
+        SELECT
+            CAST(so.SalesOrderID AS NVARCHAR(50)) AS order_no,
+            so.Project AS project_name,
+            so.Tag AS tag,
+            so.CustomerPONo AS po_number,
+            so.ShippingName AS ship_name,
+            so.ShippingAddress AS ship_address1,
+            so.ShippingAddress2 AS ship_address2,
+            so.ShippingCity AS ship_city,
+            so.ShippingProvince AS ship_province,
+            so.ShippingPostalCode AS ship_postal_code,
+            so.ShippingCountry AS ship_country,
+            so.ShippingAttention AS ship_attention,
+            so.ShippingPhone AS ship_phone
+        FROM SalesOrders so
+        WHERE CAST(so.SalesOrderID AS NVARCHAR(50)) = :order_no
+    """)
+    with oes_engine.connect() as conn:
+        order_info = conn.execute(query_header, {"order_no": order_no}).mappings().first()
+
+    if not order_info:
+        raise ValueError(f"OES order {order_no} not found.")
+
+    # --- 2. Get box info from app DB ---
+    query_box = text("""
+        SELECT 
+            pb.box_no
+        FROM pack_box AS pb
+        WHERE pb.id = :box_id AND pb.pack_id = :pack_id
+    """)
+    
+    with app_engine.connect() as conn:
+        box_info = conn.execute(query_box, {"box_id": box_id, "pack_id": pack_id}).mappings().first()
+
+    if not box_info:
+        raise ValueError(f"Box {box_id} not found in Pack {pack_id}")
+
+    # --- 3. Get items in this box (from app DB) ---
+    query_items = text("""
+        SELECT
+            pbi.qty,
+            ol.product_code,
+            ol.length_in,
+            ol.height_in
+        FROM pack_box_item AS pbi
+        INNER JOIN [order_line] AS ol ON pbi.order_line_id = ol.id
+        WHERE pbi.pack_box_id = :box_id
+        ORDER BY ol.product_code
+    """)
+    
+    with app_engine.connect() as conn:
+        items = [dict(row) for row in conn.execute(query_items, {"box_id": box_id}).mappings()]
+
+    # --- 4. Merge into final data structure ---
+    label_data = dict(order_info)
+    label_data["box_no"] = box_info["box_no"]
+    label_data["items"] = items
+    label_data["pack_id"] = pack_id
+    label_data["box_id"] = box_id
+
+    return label_data

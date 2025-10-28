@@ -462,7 +462,7 @@
                         {% if customer_address2 %}{{ customer_address2 }}<br>{% endif %}
                         {{ customer_city }}; {{ customer_province }}<br>
                         {{ customer_country }}; {{ customer_postal_code }}<br>
-                        {{ customer_phone }}<br>
+                        {{ customer_phone|format_phone }}<br>
                         {{ sales_rep_name }}
                     </div>
                 </div>
@@ -494,7 +494,7 @@
                         {{ ship_postal_code }} {{ ship_country }}<br>
                         <br>
                         <strong>Attn:</strong> {{ ship_attention or '' }}<br>
-                        {{ ship_phone }}<br>
+                        {{ ship_phone|format_phone }}<br>
                         {{ ship_email }}
                     </div>
                 </div>
@@ -571,7 +571,7 @@
                         <span class="product-tag">{{ group.product_tag }}</span>
                         {% endif %}
                     </td>
-                    <td class="col-dims">{{ group.length_in }} x {{ group.height_in }}</td>
+                    <td class="col-dims">{{ group.length_in|format_dim }} x {{ group.height_in|format_dim }}</td>
                     <td class="col-finish">{{ group.finish }}</td>
                 </tr>
                 {% endfor %}

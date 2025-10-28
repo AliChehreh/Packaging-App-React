@@ -414,6 +414,49 @@ def preview_html_packing_slip(pack_id: int, db: Session = Depends(get_db)):
     from jinja2 import Environment, FileSystemLoader, select_autoescape
     import os
     
+    def format_phone(value):
+        """
+        Format phone numbers to standard (xxx) xxx-xxxx format.
+        Removes all non-digit characters and formats accordingly.
+        Examples: 
+        - "6044204323" -> "(604) 420-4323"
+        - "(604) 420-4323" -> "(604) 420-4323"
+        - "604-420-4323" -> "(604) 420-4323"
+        """
+        if not value:
+            return ''
+        
+        # Remove all non-digit characters
+        digits = ''.join(filter(str.isdigit, str(value)))
+        
+        # If we have 10 digits, format as (xxx) xxx-xxxx
+        if len(digits) == 10:
+            return f"({digits[:3]}) {digits[3:6]}-{digits[6:]}"
+        
+        # If we have 11 digits starting with 1, format as (xxx) xxx-xxxx
+        elif len(digits) == 11 and digits[0] == '1':
+            return f"({digits[1:4]}) {digits[4:7]}-{digits[7:]}"
+        
+        # For other lengths, return as-is (might be international format)
+        return str(value)
+    
+    def format_dimension(value):
+        """
+        Format dimension values:
+        - Remove trailing zeros after decimal point
+        - Remove decimal point if value is whole number
+        Examples: 24.500 -> 24.5, 24.000 -> 24, 24.125 -> 24.125
+        """
+        if value is None:
+            return ''
+        try:
+            num = float(value)
+            # Format to 3 decimal places, then remove trailing zeros
+            formatted = f"{num:.3f}".rstrip('0').rstrip('.')
+            return formatted
+        except (ValueError, TypeError):
+            return str(value)
+    
     try:
         # Fetch packing slip data
         data = get_packing_slip_data(pack_id)
@@ -431,6 +474,10 @@ def preview_html_packing_slip(pack_id: int, db: Session = Depends(get_db)):
             loader=FileSystemLoader(templates_dir),
             autoescape=select_autoescape(['html', 'xml'])
         )
+        
+        # Add custom filters
+        env.filters['format_phone'] = format_phone
+        env.filters['format_dim'] = format_dimension
         
         # Load template
         template = env.get_template('packing_slip.html')
@@ -490,3 +537,113 @@ def get_packing_slip_report_data(pack_id: int):
     if not data:
         raise HTTPException(404, "Pack not found")
     return data
+
+
+# --- Box Label Preview Endpoint ---
+@router.get("/{pack_id}/boxes/{box_id}/label-html")
+def preview_box_label_html(pack_id: int, box_id: int, db: Session = Depends(get_db)):
+    """
+    Preview the HTML box label before printing.
+    
+    This endpoint renders the box_label.html template with all data embedded,
+    allowing you to see exactly how the label will look before printing.
+    
+    Returns:
+        HTMLResponse: Rendered HTML box label (4×6 format)
+    """
+    from fastapi.responses import HTMLResponse
+    from jinja2 import Environment, FileSystemLoader, select_autoescape
+    from backend.services.pack_view import get_box_label_data
+    
+    def format_dimension(value):
+        """
+        Format dimension values:
+        - Remove trailing zeros after decimal point
+        - Remove decimal point if value is whole number
+        Examples: 24.500 -> 24.5, 24.000 -> 24, 24.125 -> 24.125
+        """
+        if value is None:
+            return ''
+        try:
+            num = float(value)
+            # Format to 3 decimal places, then remove trailing zeros
+            formatted = f"{num:.3f}".rstrip('0').rstrip('.')
+            return formatted
+        except (ValueError, TypeError):
+            return str(value)
+    
+    def format_phone(value):
+        """
+        Format phone numbers to standard (xxx) xxx-xxxx format.
+        Removes all non-digit characters and formats accordingly.
+        Examples: 
+        - "6044204323" -> "(604) 420-4323"
+        - "(604) 420-4323" -> "(604) 420-4323"
+        - "604-420-4323" -> "(604) 420-4323"
+        """
+        if not value:
+            return ''
+        
+        # Remove all non-digit characters
+        digits = ''.join(filter(str.isdigit, str(value)))
+        
+        # If we have 10 digits, format as (xxx) xxx-xxxx
+        if len(digits) == 10:
+            return f"({digits[:3]}) {digits[3:6]}-{digits[6:]}"
+        
+        # If we have 11 digits starting with 1, format as (xxx) xxx-xxxx
+        elif len(digits) == 11 and digits[0] == '1':
+            return f"({digits[1:4]}) {digits[4:7]}-{digits[7:]}"
+        
+        # For other lengths, return as-is (might be international format)
+        return str(value)
+    
+    try:
+        # Fetch box label data
+        data = get_box_label_data(pack_id, box_id)
+        if not data:
+            raise HTTPException(404, f"Box {box_id} not found in Pack {pack_id}")
+        
+        # Setup Jinja2 environment
+        templates_dir = os.path.join(
+            os.path.dirname(__file__), 
+            "..", 
+            "templates"
+        )
+        
+        env = Environment(
+            loader=FileSystemLoader(templates_dir),
+            autoescape=select_autoescape(['html', 'xml'])
+        )
+        
+        # Add custom filter for dimension formatting
+        env.filters['format_dim'] = format_dimension
+        
+        # Add custom filter for phone formatting
+        env.filters['format_phone'] = format_phone
+        
+        # Load template
+        template = env.get_template('box_label.html')
+        
+        # Render HTML with all data
+        html_content = template.render(**data)
+        
+        # Return HTML response
+        return HTMLResponse(
+            content=html_content,
+            status_code=200,
+            headers={
+                "Content-Type": "text/html; charset=utf-8"
+            }
+        )
+    
+    except ValueError as e:
+        # Database/validation errors
+        raise HTTPException(status_code=404, detail=str(e))
+    
+    except Exception as e:
+        # Other errors (template rendering, etc.)
+        import traceback
+        error_detail = f"Box label preview failed: {str(e)}\n{traceback.format_exc()}"
+        print(error_detail)
+        raise HTTPException(status_code=500, detail=f"Box label preview failed: {str(e)}")
