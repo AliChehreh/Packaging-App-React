@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from backend.db.session import get_app_session as get_db
 
 from backend.services import cartons as svc
+from backend.deps import get_current_active_user
 
 router = APIRouter(prefix="/api/cartons", tags=["cartons"])
 
@@ -36,12 +37,12 @@ class AdjustIn(BaseModel):
 
 
 @router.get("", response_model=list[CartonOut])
-def list_cartons(active_only: bool = Query(True), db: Session = Depends(get_db)):
+def list_cartons(active_only: bool = Query(True), db: Session = Depends(get_db), current_user = Depends(get_current_active_user)):
     return svc.list_cartons(db, active_only=active_only)
 
 
 @router.post("", response_model=CartonOut)
-def create_carton(payload: CartonIn, db: Session = Depends(get_db)):
+def create_carton(payload: CartonIn, db: Session = Depends(get_db), current_user = Depends(get_current_active_user)):
     try:
         c = svc.create_carton(db, **payload.model_dump())
         db.commit()
@@ -53,7 +54,7 @@ def create_carton(payload: CartonIn, db: Session = Depends(get_db)):
 
 
 @router.put("/{carton_id}", response_model=CartonOut)
-def update_carton(carton_id: int, payload: CartonIn, db: Session = Depends(get_db)):
+def update_carton(carton_id: int, payload: CartonIn, db: Session = Depends(get_db), current_user = Depends(get_current_active_user)):
     try:
         c = svc.update_carton(db, carton_id, **payload.model_dump())
         db.commit()
@@ -65,7 +66,7 @@ def update_carton(carton_id: int, payload: CartonIn, db: Session = Depends(get_d
 
 
 @router.post("/{carton_id}/adjust", response_model=CartonOut)
-def adjust_inventory(carton_id: int, payload: AdjustIn, db: Session = Depends(get_db)):
+def adjust_inventory(carton_id: int, payload: AdjustIn, db: Session = Depends(get_db), current_user = Depends(get_current_active_user)):
     try:
         c = svc.adjust_inventory(db, carton_id, payload.delta)
         db.commit()

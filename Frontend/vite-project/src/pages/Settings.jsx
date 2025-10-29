@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Select, Button, message, Divider, Typography, Space } from 'antd';
 import { PrinterOutlined, SaveOutlined, ReloadOutlined } from '@ant-design/icons';
+import axios from 'axios';
+
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000/api";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -33,9 +36,9 @@ function Settings() {
     try {
       setLoading(true);
       // Fetch real printers from backend
-      const response = await fetch('http://localhost:8000/api/pack/system/printers');
-      if (response.ok) {
-        const printers = await response.json();
+      const response = await axios.get(`${API_BASE}/pack/system/printers`);
+      if (response.status === 200) {
+        const printers = response.data;
         setAvailablePrinters(printers);
       } else {
         // Fallback to mock printers if API fails

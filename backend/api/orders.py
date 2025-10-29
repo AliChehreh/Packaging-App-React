@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from backend.db.session import get_app_session, get_oes_session
 from backend.db.models import Order as OrderModel, OrderLine as OrderLineModel
 from backend.services.orders import ensure_order_in_app
+from backend.deps import get_current_active_user
 
 router = APIRouter(prefix="/api", tags=["orders"])
 
@@ -78,6 +79,7 @@ def list_orders(
     sort: str = "-created_at",
     limit: int = 500,
     db: Session = Depends(get_app_session),
+    current_user = Depends(get_current_active_user),
 ):
     """
     Return all matching orders in one shot (no pagination).
@@ -164,7 +166,7 @@ def list_orders(
 
 
 @router.post("/orders/sync", response_model=SyncOrderResponse)
-def sync_order(payload: SyncOrderRequest, db: Session = Depends(get_app_session)):
+def sync_order(payload: SyncOrderRequest, db: Session = Depends(get_app_session), current_user = Depends(get_current_active_user)):
     """
     Ensure the order exists in the app DB (import from OES if missing).
     Idempotent: re-calling for the same order_no won't duplicate lines.
@@ -197,7 +199,7 @@ def sync_order(payload: SyncOrderRequest, db: Session = Depends(get_app_session)
 
 
 @router.get("/orders/{order_no}", response_model=Order)
-def get_order(order_no: str, db: Session = Depends(get_app_session)):
+def get_order(order_no: str, db: Session = Depends(get_app_session), current_user = Depends(get_current_active_user)):
     order: Optional[OrderModel] = db.query(OrderModel).filter(OrderModel.order_no == order_no).one_or_none()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -211,7 +213,7 @@ def get_order(order_no: str, db: Session = Depends(get_app_session)):
 
 
 @router.get("/orders/{order_no}/lines", response_model=List[OrderLine])
-def get_order_lines(order_no: str, db: Session = Depends(get_app_session)):
+def get_order_lines(order_no: str, db: Session = Depends(get_app_session), current_user = Depends(get_current_active_user)):
     order: Optional[OrderModel] = db.query(OrderModel).filter(OrderModel.order_no == order_no).one_or_none()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -233,7 +235,7 @@ def get_order_lines(order_no: str, db: Session = Depends(get_app_session)):
 from backend.db import oes_read
 
 @router.get("/orders/oes/{order_no}")
-def get_oes_order_preview(order_no: str):
+def get_oes_order_preview(order_no: str, current_user = Depends(get_current_active_user)):
     """
     Fetch an order header + lines directly from OES for preview.
     Does NOT persist to the local database.

@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from backend.core.config import get_settings
-from backend.api import orders , cartons, packs, health
+from backend.api import orders , cartons, packs, health, auth
 settings = get_settings()
 
 app = FastAPI(title="Packaging App Backend")
@@ -30,6 +30,7 @@ def value_error_exception_handler(request, exc):
     )
 # --- Include API routers ---
 # from backend.api import orders, packs, cartons
+app.include_router(auth.router, tags=["auth"])
 app.include_router(orders.router, tags=["orders"])
 app.include_router(packs.router, tags=["pack"])
 app.include_router(cartons.router, tags=["cartons"])

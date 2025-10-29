@@ -105,15 +105,26 @@ export async function removeItemFromBox(packId, boxId, orderLineId, qty = 1) {
 
 // Download packing slip PDF - Using HTML format
 export async function downloadPackingSlip(packId) {
-  // Force HTML-based PDF generation (not Excel)
-  const url = `${API_BASE}/pack/${packId}/html-packing-slip.pdf`;
-  // If you don't need custom headers/auth, streaming is simplest:
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `packing_slip_${packId}.pdf`; // browser may ignore; server filename wins
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  try {
+    // Use axios to include auth headers
+    const response = await axios.get(`${API_BASE}/pack/${packId}/html-packing-slip.pdf`, {
+      responseType: 'blob', // Important for binary data
+    });
+    
+    // Create blob URL and trigger download
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `packing_slip_${packId}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url); // Clean up
+  } catch (error) {
+    const msg = error.response?.data?.detail || error.message || "Failed to download packing slip";
+    throw new Error(msg);
+  }
 }
 
 export async function duplicateBox(packId, boxId) {
@@ -139,9 +150,9 @@ export async function printBoxLabel(packId, boxId, printerName = null) {
       if (printerId) {
         // Get actual printer name from backend
         try {
-          const printersResponse = await fetch('http://localhost:8000/api/pack/system/printers');
-          if (printersResponse.ok) {
-            const printers = await printersResponse.json();
+          const printersResponse = await axios.get(`${API_BASE}/pack/system/printers`);
+          if (printersResponse.status === 200) {
+            const printers = printersResponse.data;
             const printer = printers.find(p => p.id === printerId);
             printerName = printer ? printer.name : 'Default Printer';
           } else {
@@ -179,9 +190,9 @@ export async function printAllBoxLabels(packId, printerName = null) {
       if (printerId) {
         // Get actual printer name from backend
         try {
-          const printersResponse = await fetch('http://localhost:8000/api/pack/system/printers');
-          if (printersResponse.ok) {
-            const printers = await printersResponse.json();
+          const printersResponse = await axios.get(`${API_BASE}/pack/system/printers`);
+          if (printersResponse.status === 200) {
+            const printers = printersResponse.data;
             const printer = printers.find(p => p.id === printerId);
             printerName = printer ? printer.name : 'Default Printer';
           } else {
@@ -211,8 +222,13 @@ export async function printAllBoxLabels(packId, printerName = null) {
 
 export async function previewPackingSlipHtml(packId) {
   try {
-    // Open packing slip HTML preview in new window
-    const url = `${API_BASE}/pack/${packId}/html-preview`;
+    // Get auth token to include in URL for the new window
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+      throw new Error("Not authenticated");
+    }
+    // Include token as query parameter for the new window
+    const url = `${API_BASE}/pack/${packId}/html-preview?token=${token}`;
     window.open(url, '_blank');
     return { success: true };
   } catch (error) {

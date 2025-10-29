@@ -6,8 +6,10 @@ import {
   InboxOutlined,
   ProfileOutlined,
   SettingOutlined,
+  LogoutOutlined,
+  UserOutlined,
 } from "@ant-design/icons";
-import { Button, Layout, Menu, theme, Typography } from "antd";
+import { Button, Layout, Menu, theme, Typography, Space, Dropdown } from "antd";
 import {
   BrowserRouter as Router,
   Routes,
@@ -15,12 +17,15 @@ import {
   Link,
   useLocation,
   Navigate,
+  useNavigate,
 } from "react-router-dom";
 
 import Packs from "./pages/Packs";
 import Orders from "./pages/Orders";
 import Cartons from "./pages/Cartons";
 import Settings from "./pages/Settings";
+import Login from "./pages/Login";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import dayusMark from "./assets/dayus-mark.png";
 import dayusLogo from "./assets/dayus-logo.svg";
 
@@ -38,6 +43,8 @@ function Shell() {
     token: { colorBgContainer, borderRadiusLG },
   } = theme.useToken();
   const { pathname } = useLocation();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
   const selectedKey = useMemo(() => {
     if (pathname.startsWith("/orders")) return "orders";
@@ -148,9 +155,39 @@ function Shell() {
             onClick={() => setCollapsed((v) => !v)}
             style={{ fontSize: 16, width: 64, height: 64 }}
           />
-          <Title level={4} style={{ margin: 0 }}>
+          <Title level={4} style={{ margin: 0, flex: 1 }}>
             Packaging App
           </Title>
+          {user && (
+            <Space style={{ marginRight: 16 }}>
+              <Dropdown
+                menu={{
+                  items: [
+                    {
+                      key: "logout",
+                      label: "Logout",
+                      icon: <LogoutOutlined />,
+                      onClick: () => {
+                        logout();
+                        navigate("/login");
+                      },
+                    },
+                  ],
+                }}
+              >
+                <Button
+                  type="text"
+                  icon={<UserOutlined />}
+                  style={{ display: "flex", alignItems: "center", gap: 8 }}
+                >
+                  <span>{user.username}</span>
+                  <span style={{ color: "#999", fontSize: 12 }}>
+                    ({user.role})
+                  </span>
+                </Button>
+              </Dropdown>
+            </Space>
+          )}
         </Header>
 
         <Content
@@ -163,6 +200,7 @@ function Shell() {
           }}
         >
           <Routes>
+            <Route path="/login" element={<Login />} />
             <Route path="/" element={<Navigate to="/packs" replace />} />
             <Route path="/packs" element={<Packs />} />
             <Route path="/orders" element={<Orders />} />
@@ -176,10 +214,31 @@ function Shell() {
   );
 }
 
+function ProtectedShell() {
+  const { isAuthenticated, loading } = useAuth();
+  const { pathname } = useLocation();
+
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+
+  if (!isAuthenticated && pathname !== "/login") {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (isAuthenticated && pathname === "/login") {
+    return <Navigate to="/packs" replace />;
+  }
+
+  return <Shell />;
+}
+
 export default function App() {
   return (
-    <Router>
-      <Shell />
-    </Router>
+    <AuthProvider>
+      <Router>
+        <ProtectedShell />
+      </Router>
+    </AuthProvider>
   );
 }

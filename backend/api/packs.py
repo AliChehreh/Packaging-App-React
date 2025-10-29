@@ -11,11 +11,12 @@ from sqlalchemy.exc import IntegrityError
 from backend.db.session import get_app_session as get_db
 from backend.db import models , oes_read
 from backend.services import pack_view
+from backend.deps import get_current_active_user
 
 router = APIRouter(prefix="/api/pack", tags=["pack"])
 
 @router.get("/{pack_id}")
-def get_pack_snapshot(pack_id: int, db: Session = Depends(get_db)):
+def get_pack_snapshot(pack_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_active_user)):
     """
     Return the full pack snapshot (header, lines, boxes, items).
     Used by the workspace view after Start Pack.
@@ -26,7 +27,7 @@ def get_pack_snapshot(pack_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail=str(e))
 
 @router.post("/start")
-def start_pack(payload: dict, db: Session = Depends(get_db)):
+def start_pack(payload: dict, db: Session = Depends(get_db), current_user = Depends(get_current_active_user)):
     """
     Ensure an order exists locally (import if needed) and start/reuse a pack.
     Returns {pack_id, order_no, status}.
@@ -108,7 +109,7 @@ def _next_box_no(db: Session, pack_id: int) -> int:
 # Create box
 # ---------------------------------------------------------------------
 @router.post("/{pack_id}/boxes")
-def create_box(pack_id: int, body: CreateBoxIn, db: Session = Depends(get_db)):
+def create_box(pack_id: int, body: CreateBoxIn, db: Session = Depends(get_db), current_user = Depends(get_current_active_user)):
     pack = db.get(models.Pack, pack_id)
     if not pack:
         raise HTTPException(404, "Pack not found")
@@ -150,6 +151,7 @@ def create_box(pack_id: int, body: CreateBoxIn, db: Session = Depends(get_db)):
 def complete_pack(
     pack_id: int,
     db: Session = Depends(get_db),
+    current_user = Depends(get_current_active_user),
 ):
     """
     Finalize a packing session.
@@ -186,7 +188,7 @@ from backend.services.report import generate_packing_slip_via_excel
 from backend.services.pack_view import get_packing_slip_data
 
 @router.post("/{pack_id}/assign-one")
-def assign_one(pack_id: int, body: dict, db: Session = Depends(get_db)):
+def assign_one(pack_id: int, body: dict, db: Session = Depends(get_db), current_user = Depends(get_current_active_user)):
     """
     Add one unit of a specific order line into a given box.
     Enforces remaining qty and pair rule.
@@ -203,7 +205,7 @@ def assign_one(pack_id: int, body: dict, db: Session = Depends(get_db)):
 
 
 @router.post("/{pack_id}/set-qty")
-def set_qty(pack_id: int, body: dict, db: Session = Depends(get_db)):
+def set_qty(pack_id: int, body: dict, db: Session = Depends(get_db), current_user = Depends(get_current_active_user)):
     """
     Explicitly set the quantity of an order line inside a box.
     """
@@ -224,6 +226,7 @@ def set_box_weight(
     box_id: int,
     body: dict,
     db: Session = Depends(get_db),
+    current_user = Depends(get_current_active_user),
 ):
     """
     Set (or clear) the weight of a specific box.
@@ -239,7 +242,7 @@ def set_box_weight(
         raise HTTPException(status_code=400, detail=str(e))
     
 @router.delete("/{pack_id}/boxes/{box_id}")
-def delete_box(pack_id: int, box_id: int, db: Session = Depends(get_db)):
+def delete_box(pack_id: int, box_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_active_user)):
     """
     Delete a box from a pack.
     Only allowed if the box is empty.
@@ -256,6 +259,7 @@ def remove_item_from_box(
     box_id: int,
     body: dict,
     db: Session = Depends(get_db),
+    current_user = Depends(get_current_active_user),
 ):
     """
     Remove a quantity (or the entire item) from a specific box.
@@ -277,6 +281,7 @@ def duplicate_box(
     pack_id: int,
     box_id: int,
     db: Session = Depends(get_db),
+    current_user = Depends(get_current_active_user),
 ):
     """
     Duplicate a box with all its items and settings.
@@ -307,7 +312,7 @@ def duplicate_box(
 # ---------------------------------------------------------------------
 
 @router.get("/{pack_id}/packing-slip.pdf")
-def export_packing_slip_pdf(pack_id: int):
+def export_packing_slip_pdf(pack_id: int, current_user = Depends(get_current_active_user)):
     """
     Generate a packing slip PDF for the specified pack.
 
@@ -336,7 +341,7 @@ def export_packing_slip_pdf(pack_id: int):
 
 
 @router.get("/{pack_id}/html-packing-slip.pdf")
-def export_html_packing_slip_pdf(pack_id: int, db: Session = Depends(get_db)):
+def export_html_packing_slip_pdf(pack_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_active_user)):
     """
     Generate a packing slip PDF using HTML template and Playwright.
     
@@ -400,7 +405,7 @@ def export_html_packing_slip_pdf(pack_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{pack_id}/html-preview")
-def preview_html_packing_slip(pack_id: int, db: Session = Depends(get_db)):
+def preview_html_packing_slip(pack_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_active_user)):
     """
     Preview the HTML packing slip before PDF conversion.
     
@@ -547,7 +552,7 @@ def preview_html_packing_slip(pack_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{pack_id}/report-data")
-def get_packing_slip_report_data(pack_id: int):
+def get_packing_slip_report_data(pack_id: int, current_user = Depends(get_current_active_user)):
     """
     Return the JSON data used to build a packing slip.
 
@@ -563,7 +568,7 @@ def get_packing_slip_report_data(pack_id: int):
 
 # --- Box Label Preview Endpoint ---
 @router.get("/system/printers")
-def get_system_printers():
+def get_system_printers(current_user = Depends(get_current_active_user)):
     """
     Get list of available printers on the system.
     
@@ -583,7 +588,7 @@ def get_system_printers():
 
 
 @router.post("/test-print/{printer_name}")
-def test_print(printer_name: str):
+def test_print(printer_name: str, current_user = Depends(get_current_active_user)):
     """
     Test printing to a specific printer with simple text.
     
@@ -633,7 +638,7 @@ def test_print(printer_name: str):
 
 
 @router.post("/{pack_id}/boxes/{box_id}/print-label")
-def print_box_label(pack_id: int, box_id: int, printer_name: str = "Default Printer", db: Session = Depends(get_db)):
+def print_box_label(pack_id: int, box_id: int, printer_name: str = "Default Printer", db: Session = Depends(get_db), current_user = Depends(get_current_active_user)):
     """
     Print a single box label directly to the specified printer.
     
@@ -686,7 +691,7 @@ def print_box_label(pack_id: int, box_id: int, printer_name: str = "Default Prin
 
 
 @router.post("/{pack_id}/boxes/print-all-labels")
-def print_all_box_labels(pack_id: int, printer_name: str = "Default Printer", db: Session = Depends(get_db)):
+def print_all_box_labels(pack_id: int, printer_name: str = "Default Printer", db: Session = Depends(get_db), current_user = Depends(get_current_active_user)):
     """
     Print all box labels for a pack directly to the specified printer.
     
@@ -777,7 +782,7 @@ def print_all_box_labels(pack_id: int, printer_name: str = "Default Printer", db
 
 
 @router.get("/{pack_id}/boxes/{box_id}/label-html")
-def preview_box_label_html(pack_id: int, box_id: int, db: Session = Depends(get_db)):
+def preview_box_label_html(pack_id: int, box_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_active_user)):
     """
     Preview the HTML box label before printing.
     
