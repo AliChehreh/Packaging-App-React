@@ -506,6 +506,28 @@ def preview_html_packing_slip(pack_id: int, db: Session = Depends(get_db)):
         # Render HTML
         html_content = template.render(**template_data)
         
+        # Add auto-print JavaScript to open print dialog and close window after printing
+        # Note: Due to browser security restrictions, we cannot programmatically select
+        # a specific printer in the print dialog. The browser will use the system default
+        # or the last printer the user selected.
+        auto_print_script = """
+        <script>
+        window.onload = function() {
+            // Print dialog will use system default or last selected printer
+            window.print();
+            setTimeout(function() {
+                window.close();
+            }, 1000);
+        };
+        </script>
+        """
+        
+        # Insert the script before closing </body> tag
+        if '</body>' in html_content:
+            html_content = html_content.replace('</body>', auto_print_script + '</body>')
+        else:
+            html_content += auto_print_script
+        
         # Return HTML response
         return HTMLResponse(
             content=html_content,
@@ -540,6 +562,220 @@ def get_packing_slip_report_data(pack_id: int):
 
 
 # --- Box Label Preview Endpoint ---
+@router.get("/system/printers")
+def get_system_printers():
+    """
+    Get list of available printers on the system.
+    
+    Returns:
+        list: List of printer dictionaries with name and id
+    """
+    from backend.services.printer_service import get_system_printers
+    
+    try:
+        printers = get_system_printers()
+        return printers
+    except Exception as e:
+        import traceback
+        error_detail = f"Failed to get printers: {str(e)}\n{traceback.format_exc()}"
+        print(error_detail)
+        raise HTTPException(status_code=500, detail=f"Failed to get printers: {str(e)}")
+
+
+@router.post("/test-print/{printer_name}")
+def test_print(printer_name: str):
+    """
+    Test printing to a specific printer with simple text.
+    
+    Args:
+        printer_name: Name of the printer to test
+        
+    Returns:
+        dict: Success status and debug information
+    """
+    from backend.services.printer_service import print_box_label_from_template
+    
+    try:
+        # Create test template data
+        test_data = {
+            'ship_name': 'John Doe',
+            'ship_address1': '123 Main Street',
+            'ship_address2': '',
+            'ship_city': 'City',
+            'ship_province': 'State',
+            'ship_postal_code': '12345',
+            'ship_country': 'Country',
+            'ship_attention': 'John Doe',
+            'ship_phone': '(555) 123-4567',
+            'order_no': 'TEST-001',
+            'project_name': 'Test Project',
+            'tag': 'TAG-001',
+            'po_number': 'PO-001',
+            'items': [
+                {'qty': '1', 'desc': 'Test Item', 'length': '10.5', 'height': '8.0'}
+            ]
+        }
+        
+        # Try to print using the template approach
+        success = print_box_label_from_template(test_data, printer_name)
+        
+        return {
+            "success": success,
+            "printer_name": printer_name,
+            "message": "Test print completed" if success else "Test print failed"
+        }
+        
+    except Exception as e:
+        import traceback
+        error_detail = f"Test print failed: {str(e)}\n{traceback.format_exc()}"
+        print(error_detail)
+        raise HTTPException(status_code=500, detail=f"Test print failed: {str(e)}")
+
+
+@router.post("/{pack_id}/boxes/{box_id}/print-label")
+def print_box_label(pack_id: int, box_id: int, printer_name: str = "Default Printer", db: Session = Depends(get_db)):
+    """
+    Print a single box label directly to the specified printer.
+    
+    Args:
+        pack_id: Pack ID
+        box_id: Box ID to print
+        printer_name: Name of the printer to print to
+        
+    Returns:
+        dict: Success message
+    """
+    from backend.services.pack_view import get_box_label_data
+    from backend.services.printer_service import print_box_label_from_template, get_system_printers
+    
+    try:
+        # Fetch box label data
+        data = get_box_label_data(pack_id, box_id)
+        if not data:
+            raise HTTPException(404, f"Box {box_id} not found in Pack {pack_id}")
+        
+        # Validate printer name
+        printers = get_system_printers()
+        available_printers = [p["name"] for p in printers]
+        
+        if printer_name not in available_printers:
+            # Use first available printer if specified printer not found
+            printer_name = available_printers[0] if available_printers else "Default Printer"
+        
+        # Print the label
+        success = print_box_label_from_template(data, printer_name)
+        
+        if success:
+            return {
+                "success": True,
+                "message": f"Box label for Box {box_id} sent to {printer_name} successfully",
+                "box_id": box_id,
+                "pack_id": pack_id,
+                "printer": printer_name
+            }
+        else:
+            raise HTTPException(500, f"Failed to print box label to {printer_name}")
+        
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        import traceback
+        error_detail = f"Box label printing failed: {str(e)}\n{traceback.format_exc()}"
+        print(error_detail)
+        raise HTTPException(status_code=500, detail=f"Box label printing failed: {str(e)}")
+
+
+@router.post("/{pack_id}/boxes/print-all-labels")
+def print_all_box_labels(pack_id: int, printer_name: str = "Default Printer", db: Session = Depends(get_db)):
+    """
+    Print all box labels for a pack directly to the specified printer.
+    
+    Args:
+        pack_id: Pack ID
+        printer_name: Name of the printer to print to
+        
+    Returns:
+        dict: Success message with count of printed labels
+    """
+    from backend.services.pack_view import get_pack_snapshot
+    from backend.services.printer_service import print_box_label_from_template, get_system_printers
+    
+    try:
+        # Get pack snapshot to find all boxes
+        pack_snapshot = get_pack_snapshot(db, pack_id)
+        if not pack_snapshot:
+            raise HTTPException(404, f"Pack {pack_id} not found")
+        
+        # Filter boxes that have items
+        boxes_with_items = [box for box in pack_snapshot.get('boxes', []) if box.get('items')]
+        
+        if not boxes_with_items:
+            raise HTTPException(400, "No boxes with items found to print")
+        
+        # Validate printer name
+        printers = get_system_printers()
+        available_printers = [p["name"] for p in printers]
+        
+        if printer_name not in available_printers:
+            # Use first available printer if specified printer not found
+            printer_name = available_printers[0] if available_printers else "Default Printer"
+        
+        # Collect all box label data
+        from backend.services.pack_view import get_box_label_data
+        from backend.services.printer_service import generate_multi_page_label_html, print_html_to_printer
+        
+        all_box_data = []
+        for box in boxes_with_items:
+            try:
+                box_data = get_box_label_data(pack_id, box['id'])
+                if box_data:
+                    all_box_data.append(box_data)
+            except Exception as e:
+                print(f"Failed to get data for box {box['id']}: {e}")
+                continue
+        
+        if not all_box_data:
+            raise HTTPException(400, "No box label data found to print")
+        
+        # Generate multi-page HTML document with all labels
+        multi_page_html = generate_multi_page_label_html(all_box_data)
+        
+        # Print all labels in one job
+        success = print_html_to_printer(multi_page_html, printer_name)
+        
+        if success:
+            printed_count = len(all_box_data)
+            failed_count = 0
+        else:
+            printed_count = 0
+            failed_count = len(all_box_data)
+            print(f"Failed to print all box labels")
+        
+        if printed_count > 0:
+            message = f"Successfully sent {printed_count} box labels to {printer_name}"
+            if failed_count > 0:
+                message += f" ({failed_count} failed)"
+            
+            return {
+                "success": True,
+                "message": message,
+                "printed_count": printed_count,
+                "failed_count": failed_count,
+                "pack_id": pack_id,
+                "printer": printer_name
+            }
+        else:
+            raise HTTPException(500, f"Failed to print any box labels to {printer_name}")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        error_detail = f"Print all labels failed: {str(e)}\n{traceback.format_exc()}"
+        print(error_detail)
+        raise HTTPException(status_code=500, detail=f"Print all labels failed: {str(e)}")
+
+
 @router.get("/{pack_id}/boxes/{box_id}/label-html")
 def preview_box_label_html(pack_id: int, box_id: int, db: Session = Depends(get_db)):
     """

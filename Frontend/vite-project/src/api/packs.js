@@ -128,3 +128,98 @@ export async function duplicateBox(packId, boxId) {
     throw new Error(msg);
   }
 }
+
+export async function printBoxLabel(packId, boxId, printerName = null) {
+  try {
+    // Get printer name from localStorage if not provided
+    if (!printerName) {
+      const settings = JSON.parse(localStorage.getItem('printerSettings') || '{}');
+      const printerId = settings.boxLabelPrinter;
+      
+      if (printerId) {
+        // Get actual printer name from backend
+        try {
+          const printersResponse = await fetch('http://localhost:8000/api/pack/system/printers');
+          if (printersResponse.ok) {
+            const printers = await printersResponse.json();
+            const printer = printers.find(p => p.id === printerId);
+            printerName = printer ? printer.name : 'Default Printer';
+          } else {
+            printerName = 'Default Printer';
+          }
+        } catch (error) {
+          console.error('Failed to get printer name:', error);
+          printerName = 'Default Printer';
+        }
+      } else {
+        printerName = 'Default Printer';
+      }
+    }
+    
+    const res = await axios.post(`${API_BASE}/pack/${packId}/boxes/${boxId}/print-label`, null, {
+      params: { printer_name: printerName }
+    });
+    return res.data;
+  } catch (error) {
+    const msg =
+      error.response?.data?.detail ||
+      error.message ||
+      "Failed to print box label";
+    throw new Error(msg);
+  }
+}
+
+export async function printAllBoxLabels(packId, printerName = null) {
+  try {
+    // Get printer name from localStorage if not provided
+    if (!printerName) {
+      const settings = JSON.parse(localStorage.getItem('printerSettings') || '{}');
+      const printerId = settings.boxLabelPrinter;
+      
+      if (printerId) {
+        // Get actual printer name from backend
+        try {
+          const printersResponse = await fetch('http://localhost:8000/api/pack/system/printers');
+          if (printersResponse.ok) {
+            const printers = await printersResponse.json();
+            const printer = printers.find(p => p.id === printerId);
+            printerName = printer ? printer.name : 'Default Printer';
+          } else {
+            printerName = 'Default Printer';
+          }
+        } catch (error) {
+          console.error('Failed to get printer name:', error);
+          printerName = 'Default Printer';
+        }
+      } else {
+        printerName = 'Default Printer';
+      }
+    }
+    
+    const res = await axios.post(`${API_BASE}/pack/${packId}/boxes/print-all-labels`, null, {
+      params: { printer_name: printerName }
+    });
+    return res.data;
+  } catch (error) {
+    const msg =
+      error.response?.data?.detail ||
+      error.message ||
+      "Failed to print all box labels";
+    throw new Error(msg);
+  }
+}
+
+export async function previewPackingSlipHtml(packId) {
+  try {
+    // Open packing slip HTML preview in new window
+    const url = `${API_BASE}/pack/${packId}/html-preview`;
+    window.open(url, '_blank');
+    return { success: true };
+  } catch (error) {
+    const msg =
+      error.response?.data?.detail ||
+      error.message ||
+      "Failed to open packing slip preview";
+    throw new Error(msg);
+  }
+}

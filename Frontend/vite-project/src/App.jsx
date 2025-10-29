@@ -5,6 +5,7 @@ import {
   AppstoreOutlined,
   InboxOutlined,
   ProfileOutlined,
+  SettingOutlined,
 } from "@ant-design/icons";
 import { Button, Layout, Menu, theme, Typography } from "antd";
 import {
@@ -19,6 +20,7 @@ import {
 import Packs from "./pages/Packs";
 import Orders from "./pages/Orders";
 import Cartons from "./pages/Cartons";
+import Settings from "./pages/Settings";
 import dayusMark from "./assets/dayus-mark.png";
 import dayusLogo from "./assets/dayus-logo.svg";
 
@@ -40,6 +42,7 @@ function Shell() {
   const selectedKey = useMemo(() => {
     if (pathname.startsWith("/orders")) return "orders";
     if (pathname.startsWith("/cartons")) return "cartons";
+    if (pathname.startsWith("/settings")) return "settings";
     return "packs";
   }, [pathname]);
 
@@ -47,6 +50,7 @@ function Shell() {
     { key: "packs", icon: <InboxOutlined />, label: <Link to="/packs">Packs</Link> },
     { key: "orders", icon: <ProfileOutlined />, label: <Link to="/orders">Orders</Link> },
     { key: "cartons", icon: <AppstoreOutlined />, label: <Link to="/cartons">Cartons</Link> },
+    { key: "settings", icon: <SettingOutlined />, label: <Link to="/settings">Settings</Link> },
   ];
 
   return (
@@ -163,6 +167,7 @@ function Shell() {
             <Route path="/packs" element={<Packs />} />
             <Route path="/orders" element={<Orders />} />
             <Route path="/cartons" element={<Cartons />} />
+            <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/packs" replace />} />
           </Routes>
         </Content>

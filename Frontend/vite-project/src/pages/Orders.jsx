@@ -42,6 +42,9 @@ import {
   removeItemFromBox,
   downloadPackingSlip,
   duplicateBox,
+  printBoxLabel,
+  printAllBoxLabels,
+  previewPackingSlipHtml,
 } from "../api/packs";
 import { listCartonTypes } from "../api/cartons";
 
@@ -535,22 +538,62 @@ export default function Orders() {
     async function handlePrintBoxLabel(boxId) {
       const packId = pack.header.pack_id;
       try {
-        // Open box label HTML in new window for printing
-        const labelUrl = `http://localhost:8000/api/pack/${packId}/boxes/${boxId}/label-html`;
-        const printWindow = window.open(labelUrl, '_blank', 'width=800,height=600');
+        // Get printer settings from localStorage
+        const boxLabelPrinter = localStorage.getItem('boxLabelPrinter');
         
-        if (printWindow) {
-          printWindow.onload = () => {
-            // Small delay to ensure content is fully loaded
-            setTimeout(() => {
-              printWindow.print();
-            }, 500);
-          };
-        } else {
-          message.error({ content: "Please allow popups to print box labels.", key: "print" });
+        if (!boxLabelPrinter) {
+          message.error({ content: "Please select a box label printer in Settings first.", key: "print" });
+          return;
         }
+
+        message.loading({ content: `Printing box label to ${boxLabelPrinter}...`, key: "print" });
+        
+        // Call the actual API endpoint
+        const result = await printBoxLabel(packId, boxId);
+        
+        message.success({ content: result.message, key: "print", duration: 2 });
       } catch (err) {
         message.error({ content: err?.message || "Failed to print box label.", key: "print" });
+      }
+    }
+
+    async function handlePrintAllLabels() {
+      const packId = pack.header.pack_id;
+      try {
+        // Get printer settings from localStorage
+        const boxLabelPrinter = localStorage.getItem('boxLabelPrinter');
+        
+        if (!boxLabelPrinter) {
+          message.error({ content: "Please select a box label printer in Settings first.", key: "printAll" });
+          return;
+        }
+
+        // Filter boxes that have items
+        const boxesWithItems = pack.boxes.filter(box => box.items.length > 0);
+        
+        if (boxesWithItems.length === 0) {
+          message.warning({ content: "No boxes with items to print.", key: "printAll" });
+          return;
+        }
+
+        message.loading({ content: `Printing ${boxesWithItems.length} box labels to ${boxLabelPrinter}...`, key: "printAll" });
+        
+        // Call the actual API endpoint
+        const result = await printAllBoxLabels(packId);
+        
+        message.success({ content: result.message, key: "printAll", duration: 3 });
+      } catch (err) {
+        message.error({ content: err?.message || "Failed to print all box labels.", key: "printAll" });
+      }
+    }
+
+    function handlePrintPackingSlip() {
+      const packId = pack.header.pack_id;
+      try {
+        // Open packing slip HTML preview (which will open print dialog)
+        previewPackingSlipHtml(packId);
+      } catch (err) {
+        message.error({ content: err?.message || "Failed to open packing slip preview.", key: "packingSlip" });
       }
     }
 
@@ -1210,6 +1253,45 @@ export default function Orders() {
                     </Button>
                   </Tooltip>
                 </Space>
+              )}
+              {isComplete && pack.boxes.some(box => box.items.length > 0) && (
+                <>
+                  <Tooltip title="Print All Box Labels">
+                    <Button 
+                      type="primary" 
+                      size="small" 
+                      icon={<PrinterOutlined />}
+                      onClick={handlePrintAllLabels}
+                      style={{
+                        fontWeight: '500',
+                        borderRadius: '6px',
+                        background: '#52c41a',
+                        borderColor: '#52c41a',
+                        boxShadow: '0 2px 4px rgba(82, 196, 26, 0.2)',
+                        marginRight: '8px'
+                      }}
+                    >
+                      Print All Labels
+                    </Button>
+                  </Tooltip>
+                  <Tooltip title="Print Packing Slip">
+                    <Button 
+                      type="primary" 
+                      size="small" 
+                      icon={<PrinterOutlined />}
+                      onClick={handlePrintPackingSlip}
+                      style={{
+                        fontWeight: '500',
+                        borderRadius: '6px',
+                        background: '#1677ff',
+                        borderColor: '#1677ff',
+                        boxShadow: '0 2px 4px rgba(22, 119, 255, 0.2)'
+                      }}
+                    >
+                      Print Packing Slip
+                    </Button>
+                  </Tooltip>
+                </>
               )}
             </div>
 
