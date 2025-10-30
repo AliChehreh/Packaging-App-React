@@ -38,7 +38,7 @@ function Packs() {
   const [packs, setPacks] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedDate, setSelectedDate] = useState(dayjs());
+  const [selectedDate, setSelectedDate] = useState(null); // Start with no date to show all packs
   const [searchInput, setSearchInput] = useState('');
 
   // Check if user is supervisor
@@ -57,16 +57,17 @@ function Packs() {
   const loadPacks = useCallback(async () => {
     try {
       setLoading(true);
-      // For now, don't use date filtering since completed_at is not populated
+      // Now using date filtering since completed_at is populated
+      const date = selectedDate ? selectedDate.format('YYYY-MM-DD') : null;
       const search = searchTerm.trim() || null;
-      const data = await getCompletedPacks(null, search);
+      const data = await getCompletedPacks(date, search);
       setPacks(data);
     } catch (error) {
       message.error(error.message || 'Failed to load completed packs');
     } finally {
       setLoading(false);
     }
-  }, [searchTerm]);
+  }, [searchTerm, selectedDate]);
 
   // Load packs on mount and when filters change
   useEffect(() => {
@@ -150,10 +151,31 @@ function Packs() {
       ),
     },
     {
+      title: 'Completed Date',
+      dataIndex: 'completed_at',
+      key: 'completed_at',
+      sorter: (a, b) => {
+        if (!a.completed_at && !b.completed_at) return 0;
+        if (!a.completed_at) return 1;
+        if (!b.completed_at) return -1;
+        return new Date(a.completed_at) - new Date(b.completed_at);
+      },
+      render: (text) => {
+        if (!text) return <Text type="secondary">-</Text>;
+        return <Text>{dayjs(text).format('YYYY-MM-DD HH:mm')}</Text>;
+      },
+    },
+    {
       title: 'Ship By',
       dataIndex: 'ship_by',
       key: 'ship_by',
       render: (text) => text || <Text type="secondary">-</Text>,
+    },
+    {
+      title: 'Service Level',
+      dataIndex: 'service_level',
+      key: 'service_level',
+      render: (text) => text ? <Tag color="purple">{text}</Tag> : <Text type="secondary">-</Text>,
     },
     {
       title: 'Total Boxes',
@@ -275,7 +297,7 @@ function Packs() {
           border: '1px solid #e6f7ff'
         }}>
           <Space size="large" wrap>
-            <div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
               <Text strong style={{ display: 'block', marginBottom: '4px' }}>
                 <CalendarOutlined style={{ marginRight: '4px' }} />
                 Completion Date
@@ -284,16 +306,16 @@ function Packs() {
                 value={selectedDate}
                 onChange={setSelectedDate}
                 format="YYYY-MM-DD"
-                placeholder="All completed packs"
+                placeholder="Select completion date"
                 style={{ width: 200 }}
-                disabled
+                allowClear
               />
-              <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginTop: '4px' }}>
-                Showing all completed packs
+              <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginTop: '4px', minHeight: '16px' }}>
+                {selectedDate ? `Showing packs from ${selectedDate.format('MMMM D, YYYY')}` : 'Showing all completed packs'}
               </Text>
             </div>
             
-            <div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
               <Text strong style={{ display: 'block', marginBottom: '4px' }}>
                 <SearchOutlined style={{ marginRight: '4px' }} />
                 Search Orders
@@ -305,6 +327,8 @@ function Packs() {
                 style={{ width: 300 }}
                 prefix={<SearchOutlined style={{ color: '#1677ff' }} />}
               />
+              {/* Invisible spacer to align with DatePicker helper text */}
+              <div style={{ fontSize: '12px', marginTop: '4px', minHeight: '16px' }}></div>
             </div>
           </Space>
         </div>

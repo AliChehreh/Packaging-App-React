@@ -186,7 +186,7 @@ def get_pack_snapshot(db: Session, pack_id: int) -> Dict:
 # Pack completion integrity check
 # ---------------------------------------------------------------------
 
-def complete_pack(db: Session, pack_id: int):
+def complete_pack(db: Session, pack_id: int, completed_by_user_id: int):
     """
     Validate that:
       1. Every box in the pack has a recorded weight.
@@ -235,6 +235,8 @@ def complete_pack(db: Session, pack_id: int):
 
     # ✅ 3. All validations passed → mark complete
     pack.status = "complete"
+    pack.completed_by = completed_by_user_id  # Set the user who completed the pack
+    pack.completed_at = datetime.utcnow()  # Set the completion timestamp
     db.commit()
     return {"message": "Pack marked complete"}
 

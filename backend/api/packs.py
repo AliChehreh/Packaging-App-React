@@ -4,8 +4,8 @@ from fastapi.responses import FileResponse
 from backend.services.report import generate_packing_slip_via_excel
 from backend.services.report_html import generate_packing_slip_pdf
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
-from sqlalchemy import func, select
+from sqlalchemy.orm import Session, aliased
+from sqlalchemy import func, select, cast, Date
 from sqlalchemy.exc import IntegrityError
 from typing import Optional, List
 from datetime import datetime, date, timedelta
@@ -28,7 +28,9 @@ class CompletedPackResponse(BaseModel):
     ship_city: Optional[str] = None
     ship_province: Optional[str] = None
     packager_username: Optional[str] = None
+    started_by_username: Optional[str] = None
     ship_by: Optional[str] = None
+    service_level: Optional[str] = None
     total_boxes: int = 0
     total_weight: Optional[float] = None
     completed_at: Optional[datetime] = None
@@ -50,39 +52,53 @@ def list_completed_packs(
     """
     from datetime import datetime, date as date_type
     
-    # Parse date filter - default to today if not provided
+    # Parse date filter - if not provided, show all completed packs
     filter_date = None
     if date:
         try:
             filter_date = datetime.strptime(date, "%Y-%m-%d").date()
         except ValueError as e:
             raise HTTPException(400, "Invalid date format. Use YYYY-MM-DD")
-    else:
-        filter_date = date_type.today()
+    # If no date is provided, filter_date remains None and we show all completed packs
     
-    # Build base query - show all completed packs since completed_at is not populated
+    # Build base query - show all completed packs with completed_at populated
+    # Need to join User table twice - once for started_by and once for completed_by
+    StartedByUser = aliased(models.User)
+    CompletedByUser = aliased(models.User)
+    
     query = (
         db.query(
             models.Pack.id.label('pack_id'),
             models.Order.order_no,
             models.Order.customer_name,
-            models.User.username.label('packager_username'),
+            StartedByUser.username.label('started_by_username'),
+            CompletedByUser.username.label('packager_username'),
             models.Pack.completed_at,
             func.count(models.PackBox.id).label('total_boxes'),
             func.sum(models.PackBox.weight_lbs).label('total_weight')
         )
         .join(models.Order, models.Pack.order_id == models.Order.id)
-        .outerjoin(models.User, models.Pack.completed_by == models.User.id)
+        .outerjoin(StartedByUser, models.Pack.started_by == StartedByUser.id)
+        .outerjoin(CompletedByUser, models.Pack.completed_by == CompletedByUser.id)
         .outerjoin(models.PackBox, models.Pack.id == models.PackBox.pack_id)
         .filter(models.Pack.status == 'complete')
         .group_by(
             models.Pack.id,
             models.Order.order_no,
             models.Order.customer_name,
-            models.User.username,
+            StartedByUser.username,
+            CompletedByUser.username,
             models.Pack.completed_at
         )
     )
+    
+    # Apply date filter if provided
+    if filter_date:
+        # Filter by completion date
+        # SQLAlchemy requires casting to date for comparison
+        query = query.filter(
+            cast(models.Pack.completed_at, Date) == filter_date
+        )
     
     # Apply search filter
     if search:
@@ -105,13 +121,15 @@ def list_completed_packs(
         ship_city = None
         ship_province = None
         ship_by = None
+        service_level = None
         
         try:
             oes_header, _ = oes_read.fetch_order_from_oes(result.order_no)
             if oes_header:
                 ship_city = oes_header.get('ship_city')
                 ship_province = oes_header.get('ship_province')
-                ship_by = oes_header.get('lead_time_plan')
+                ship_by = oes_header.get('ship_by')
+                service_level = oes_header.get('ServiceLevel')  # Use the raw SQL column name
         except Exception:
             # If OES fetch fails, continue with None values
             pass
@@ -123,7 +141,9 @@ def list_completed_packs(
             ship_city=ship_city,
             ship_province=ship_province,
             packager_username=result.packager_username,
+            started_by_username=result.started_by_username,
             ship_by=ship_by,
+            service_level=service_level,
             total_boxes=result.total_boxes or 0,
             total_weight=float(result.total_weight) if result.total_weight is not None else None,
             completed_at=result.completed_at
@@ -228,7 +248,11 @@ def start_pack(payload: dict, db: Session = Depends(get_db), current_user = Depe
         .first()
     )
     if not pack:
-        pack = models.Pack(order_id=order.id, status="in_progress")
+        pack = models.Pack(
+            order_id=order.id, 
+            status="in_progress",
+            started_by=current_user.id  # Set the user who started the pack
+        )
         db.add(pack)
         db.commit()
         db.refresh(pack)
@@ -305,7 +329,7 @@ def complete_pack(
     Returns the updated pack snapshot or an error message if validation fails.
     """
     try:
-        result = pack_view.complete_pack(db, pack_id)
+        result = pack_view.complete_pack(db, pack_id, current_user.id)
         # Return the updated snapshot so the UI refreshes immediately
         snapshot = pack_view.get_pack_snapshot(db, pack_id)
         snapshot["message"] = result["message"]
