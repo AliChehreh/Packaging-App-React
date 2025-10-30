@@ -54,9 +54,9 @@ function Shell() {
   }, [pathname]);
 
   const items = [
-    { key: "packs", icon: <InboxOutlined />, label: <Link to="/packs">Packs</Link> },
-    { key: "orders", icon: <ProfileOutlined />, label: <Link to="/orders">Orders</Link> },
-    { key: "cartons", icon: <AppstoreOutlined />, label: <Link to="/cartons">Cartons</Link> },
+     { key: "orders", icon: <ProfileOutlined />, label: <Link to="/orders">Packaging</Link> },
+     { key: "packs", icon: <InboxOutlined />, label: <Link to="/packs">Packing Management</Link> },
+     { key: "cartons", icon: <AppstoreOutlined />, label: <Link to="/cartons">Box Inventory</Link> },
     { key: "settings", icon: <SettingOutlined />, label: <Link to="/settings">Settings</Link> },
   ];
 
@@ -156,7 +156,7 @@ function Shell() {
             style={{ fontSize: 16, width: 64, height: 64 }}
           />
           <Title level={4} style={{ margin: 0, flex: 1 }}>
-            Packaging App
+            Dayus Packaging App
           </Title>
           {user && (
             <Space style={{ marginRight: 16 }}>

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from backend.services.report import generate_packing_slip_via_excel
 from backend.services.report_html import generate_packing_slip_pdf
@@ -7,13 +7,159 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
+from typing import Optional, List
+from datetime import datetime, date, timedelta
 
 from backend.db.session import get_app_session as get_db
 from backend.db import models , oes_read
 from backend.services import pack_view
-from backend.deps import get_current_active_user
+from backend.deps import get_current_active_user, require_supervisor
 
 router = APIRouter(prefix="/api/pack", tags=["pack"])
+
+# ---------------------------------------------------------------------
+# Completed Packs History (Supervisor Only)
+# ---------------------------------------------------------------------
+
+class CompletedPackResponse(BaseModel):
+    pack_id: int
+    order_no: Optional[str] = None
+    customer_name: Optional[str] = None
+    ship_city: Optional[str] = None
+    ship_province: Optional[str] = None
+    packager_username: Optional[str] = None
+    ship_by: Optional[str] = None
+    total_boxes: int = 0
+    total_weight: Optional[float] = None
+    completed_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/completed", response_model=List[CompletedPackResponse])
+def list_completed_packs(
+    date: Optional[str] = Query(None, description="Filter by completion date (YYYY-MM-DD), defaults to today"),
+    search: Optional[str] = Query(None, description="Search by order number or customer name"),
+    db: Session = Depends(get_db),
+    current_user = Depends(require_supervisor)
+):
+    """
+    List completed packs with filtering and search capabilities.
+    Supervisor only endpoint.
+    """
+    from datetime import datetime, date as date_type
+    
+    # Parse date filter - default to today if not provided
+    filter_date = None
+    if date:
+        try:
+            filter_date = datetime.strptime(date, "%Y-%m-%d").date()
+        except ValueError as e:
+            raise HTTPException(400, "Invalid date format. Use YYYY-MM-DD")
+    else:
+        filter_date = date_type.today()
+    
+    # Build base query - show all completed packs since completed_at is not populated
+    query = (
+        db.query(
+            models.Pack.id.label('pack_id'),
+            models.Order.order_no,
+            models.Order.customer_name,
+            models.User.username.label('packager_username'),
+            models.Pack.completed_at,
+            func.count(models.PackBox.id).label('total_boxes'),
+            func.sum(models.PackBox.weight_lbs).label('total_weight')
+        )
+        .join(models.Order, models.Pack.order_id == models.Order.id)
+        .outerjoin(models.User, models.Pack.completed_by == models.User.id)
+        .outerjoin(models.PackBox, models.Pack.id == models.PackBox.pack_id)
+        .filter(models.Pack.status == 'complete')
+        .group_by(
+            models.Pack.id,
+            models.Order.order_no,
+            models.Order.customer_name,
+            models.User.username,
+            models.Pack.completed_at
+        )
+    )
+    
+    # Apply search filter
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            (models.Order.order_no.ilike(search_term)) |
+            (models.Order.customer_name.ilike(search_term))
+        )
+    
+    # Execute query
+    try:
+        results = query.all()
+    except Exception as e:
+        raise HTTPException(500, f"Database query error: {str(e)}")
+    
+    # Fetch OES data for ship_city and ship_province
+    completed_packs = []
+    for result in results:
+        # Get OES data for shipping address
+        ship_city = None
+        ship_province = None
+        ship_by = None
+        
+        try:
+            oes_header, _ = oes_read.fetch_order_from_oes(result.order_no)
+            if oes_header:
+                ship_city = oes_header.get('ship_city')
+                ship_province = oes_header.get('ship_province')
+                ship_by = oes_header.get('lead_time_plan')
+        except Exception:
+            # If OES fetch fails, continue with None values
+            pass
+        
+        completed_packs.append(CompletedPackResponse(
+            pack_id=result.pack_id,
+            order_no=result.order_no,
+            customer_name=result.customer_name,
+            ship_city=ship_city,
+            ship_province=ship_province,
+            packager_username=result.packager_username,
+            ship_by=ship_by,
+            total_boxes=result.total_boxes or 0,
+            total_weight=float(result.total_weight) if result.total_weight is not None else None,
+            completed_at=result.completed_at
+        ))
+    
+    return completed_packs
+
+
+@router.post("/{pack_id}/reopen")
+def reopen_pack(
+    pack_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_supervisor)
+):
+    """
+    Reopen a completed pack for modification.
+    Changes status from 'complete' back to 'in_progress'.
+    Supervisor only endpoint.
+    """
+    # Find the pack
+    pack = db.query(models.Pack).filter(models.Pack.id == pack_id).first()
+    if not pack:
+        raise HTTPException(404, "Pack not found")
+    
+    if pack.status != 'complete':
+        raise HTTPException(400, "Pack is not completed and cannot be reopened")
+    
+    # Update pack status
+    pack.status = 'in_progress'
+    pack.completed_at = None
+    pack.completed_by = None
+    
+    db.commit()
+    
+    return {"message": "Pack reopened successfully", "pack_id": pack_id, "status": "in_progress"}
+
 
 @router.get("/{pack_id}")
 def get_pack_snapshot(pack_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_active_user)):

@@ -1,6 +1,6 @@
-# React + Vite
+# Dayus Packaging App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A modern packaging application built with React and Vite.
 
 Currently, two official plugins are available:
 

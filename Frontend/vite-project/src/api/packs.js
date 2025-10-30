@@ -5,11 +5,8 @@ import axios from "axios";
 const API_BASE = "http://localhost:8000/api";
 
 export async function startPack(orderNo) {
-  console.log("API: Starting pack with order_no:", orderNo); // Debug log
   const payload = { order_no: orderNo };
-  console.log("API: Sending payload:", payload); // Debug log
   const res = await axios.post(`${API_BASE}/pack/start`, payload);
-  console.log("API: Response received:", res.data); // Debug log
   return res.data;
 }
 
@@ -236,6 +233,43 @@ export async function previewPackingSlipHtml(packId) {
       error.response?.data?.detail ||
       error.message ||
       "Failed to open packing slip preview";
+    throw new Error(msg);
+  }
+}
+
+// Completed Packs History API functions
+export async function getCompletedPacks(date = null, search = null) {
+  try {
+    const params = new URLSearchParams();
+    if (date) params.append('date', date);
+    if (search) params.append('search', search);
+    
+    const response = await axios.get(`${API_BASE}/pack/completed?${params.toString()}`);
+    return response.data;
+  } catch (error) {
+    let msg = "Failed to fetch completed packs";
+    if (error.response?.status === 401) {
+      msg = "Authentication required. Please log in again.";
+    } else if (error.response?.status === 403) {
+      msg = "Access denied. Supervisor role required.";
+    } else if (error.response?.status === 422) {
+      msg = "Invalid request parameters. Please check your input.";
+    } else if (error.response?.data?.detail) {
+      msg = error.response.data.detail;
+    } else if (error.message) {
+      msg = error.message;
+    }
+    
+    throw new Error(msg);
+  }
+}
+
+export async function reopenPack(packId) {
+  try {
+    const response = await axios.post(`${API_BASE}/pack/${packId}/reopen`);
+    return response.data;
+  } catch (error) {
+    const msg = error.response?.data?.detail || error.message || "Failed to reopen pack";
     throw new Error(msg);
   }
 }

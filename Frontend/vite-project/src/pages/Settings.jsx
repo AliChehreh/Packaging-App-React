@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Select, Button, message, Divider, Typography, Space } from 'antd';
-import { PrinterOutlined, SaveOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Card, Select, Button, message, Divider, Typography, Space, Tabs } from 'antd';
+import { PrinterOutlined, SaveOutlined, ReloadOutlined, TeamOutlined, SettingOutlined } from '@ant-design/icons';
 import axios from 'axios';
+import { useAuth } from '../contexts/AuthContext';
+import { isSupervisor } from '../utils/roles';
+import UserManagement from '../components/UserManagement';
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000/api";
 
@@ -9,6 +12,7 @@ const { Title, Text } = Typography;
 const { Option } = Select;
 
 function Settings() {
+  const { user } = useAuth();
   const [boxLabelPrinter, setBoxLabelPrinter] = useState('');
   const [packingSlipPrinter, setPackingSlipPrinter] = useState('');
   const [availablePrinters, setAvailablePrinters] = useState([]);
@@ -92,94 +96,140 @@ function Settings() {
     message.info('Settings reset to defaults');
   };
 
+  // Tab items based on user role
+  const tabItems = [
+    {
+      key: 'printers',
+      label: (
+        <span>
+          <PrinterOutlined />
+          Printer Settings
+        </span>
+      ),
+      children: (
+        <div>
+          <Card title="Printer Settings" style={{ marginBottom: '24px' }}>
+            <Space direction="vertical" size="large" style={{ width: '100%' }}>
+              <div>
+                <Text strong>Box Label Printer</Text>
+                <br />
+                <Text type="secondary" style={{ fontSize: '12px' }}>
+                  Select the printer for printing box labels
+                </Text>
+                <Select
+                  style={{ width: '100%', marginTop: '8px' }}
+                  placeholder="Select box label printer"
+                  value={boxLabelPrinter}
+                  onChange={setBoxLabelPrinter}
+                >
+                  {availablePrinters.map(printer => (
+                    <Option key={printer.id} value={printer.id}>
+                      {printer.name}
+                    </Option>
+                  ))}
+                </Select>
+              </div>
+
+              <Divider />
+
+              <div>
+                <Text strong>Packing Slip Printer</Text>
+                <br />
+                <Text type="secondary" style={{ fontSize: '12px' }}>
+                  Select the printer for printing packing slips
+                </Text>
+                <Select
+                  style={{ width: '100%', marginTop: '8px' }}
+                  placeholder="Select packing slip printer"
+                  value={packingSlipPrinter}
+                  onChange={setPackingSlipPrinter}
+                >
+                  {availablePrinters.map(printer => (
+                    <Option key={printer.id} value={printer.id}>
+                      {printer.name}
+                    </Option>
+                  ))}
+                </Select>
+              </div>
+
+              <Divider />
+
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                <Button onClick={resetToDefaults}>
+                  Reset to Defaults
+                </Button>
+                <Button 
+                  icon={<ReloadOutlined />}
+                  onClick={detectPrinters}
+                  loading={loading}
+                >
+                  Refresh Printers
+                </Button>
+                <Button 
+                  type="primary" 
+                  icon={<SaveOutlined />}
+                  onClick={savePrinterSettings}
+                  loading={loading}
+                >
+                  Save Settings
+                </Button>
+              </div>
+            </Space>
+          </Card>
+
+          <Card title="Current Settings" size="small">
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <div>
+                <Text strong>Box Label Printer: </Text>
+                <Text>{boxLabelPrinter ? availablePrinters.find(p => p.id === boxLabelPrinter)?.name || 'Unknown' : 'Not set'}</Text>
+              </div>
+              <div>
+                <Text strong>Packing Slip Printer: </Text>
+                <Text>{packingSlipPrinter ? availablePrinters.find(p => p.id === packingSlipPrinter)?.name || 'Unknown' : 'Not set'}</Text>
+              </div>
+            </Space>
+          </Card>
+        </div>
+      ),
+    },
+  ];
+
+  // Add User Management tab for supervisors
+  if (isSupervisor(user?.role)) {
+    tabItems.push({
+      key: 'users',
+      label: (
+        <span>
+          <TeamOutlined />
+          User Management
+        </span>
+      ),
+      children: <UserManagement />,
+    });
+  }
+
   return (
-    <div style={{ padding: '24px', maxWidth: '800px', margin: '0 auto' }}>
+    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
       <Title level={2}>
-        <PrinterOutlined style={{ marginRight: '8px' }} />
+        <SettingOutlined style={{ marginRight: '8px' }} />
         Settings
       </Title>
       
-      <Card title="Printer Settings" style={{ marginBottom: '24px' }}>
-        <Space direction="vertical" size="large" style={{ width: '100%' }}>
-          <div>
-            <Text strong>Box Label Printer</Text>
-            <br />
-            <Text type="secondary" style={{ fontSize: '12px' }}>
-              Select the printer for printing box labels
-            </Text>
-            <Select
-              style={{ width: '100%', marginTop: '8px' }}
-              placeholder="Select box label printer"
-              value={boxLabelPrinter}
-              onChange={setBoxLabelPrinter}
-            >
-              {availablePrinters.map(printer => (
-                <Option key={printer.id} value={printer.id}>
-                  {printer.name}
-                </Option>
-              ))}
-            </Select>
-          </div>
-
-          <Divider />
-
-          <div>
-            <Text strong>Packing Slip Printer</Text>
-            <br />
-            <Text type="secondary" style={{ fontSize: '12px' }}>
-              Select the printer for printing packing slips
-            </Text>
-            <Select
-              style={{ width: '100%', marginTop: '8px' }}
-              placeholder="Select packing slip printer"
-              value={packingSlipPrinter}
-              onChange={setPackingSlipPrinter}
-            >
-              {availablePrinters.map(printer => (
-                <Option key={printer.id} value={printer.id}>
-                  {printer.name}
-                </Option>
-              ))}
-            </Select>
-          </div>
-
-          <Divider />
-
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-            <Button onClick={resetToDefaults}>
-              Reset to Defaults
-            </Button>
-            <Button 
-              icon={<ReloadOutlined />}
-              onClick={detectPrinters}
-              loading={loading}
-            >
-              Refresh Printers
-            </Button>
-            <Button 
-              type="primary" 
-              icon={<SaveOutlined />}
-              onClick={savePrinterSettings}
-              loading={loading}
-            >
-              Save Settings
-            </Button>
-          </div>
-        </Space>
-      </Card>
-
-      <Card title="Current Settings" size="small">
-        <Space direction="vertical" style={{ width: '100%' }}>
-          <div>
-            <Text strong>Box Label Printer: </Text>
-            <Text>{boxLabelPrinter ? availablePrinters.find(p => p.id === boxLabelPrinter)?.name || 'Unknown' : 'Not set'}</Text>
-          </div>
-          <div>
-            <Text strong>Packing Slip Printer: </Text>
-            <Text>{packingSlipPrinter ? availablePrinters.find(p => p.id === packingSlipPrinter)?.name || 'Unknown' : 'Not set'}</Text>
-          </div>
-        </Space>
-      </Card>
+      <Tabs
+        defaultActiveKey="printers"
+        items={tabItems}
+        size="large"
+        style={{
+          background: 'white',
+          borderRadius: '12px',
+          padding: '24px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+        }}
+        tabBarStyle={{
+          borderBottom: '2px solid #f0f0f0',
+          marginBottom: '24px',
+        }}
+      />
     </div>
   );
 }

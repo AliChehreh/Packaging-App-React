@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <!-- Background circle -->
+  <circle cx="50" cy="50" r="48" fill="#1677ff"/>
+  
+  <!-- Simple packaging box (2D perspective) -->
+  <!-- Box front face -->
+  <rect x="25" y="35" width="50" height="40" fill="#ffffff" rx="2"/>
+  
+  <!-- Box top face (folded down) -->
+  <path d="M25 35 L30 28 L80 28 L75 35 Z" fill="#f0f8ff" rx="2"/>
+  
+  <!-- Box right side face -->
+  <path d="M75 35 L80 28 L80 68 L75 75 Z" fill="#e6f7ff" rx="2"/>
+  
+  <!-- Packaging tape/seal -->
+  <rect x="40" y="50" width="20" height="3" fill="#ff4d4f" rx="1"/>
+  <rect x="45" y="48" width="10" height="7" fill="#ff4d4f" opacity="0.8" rx="1"/>
+  
+  <!-- Box label/barcode (optional detail) -->
+  <rect x="30" y="58" width="2" height="10" fill="#1677ff" opacity="0.6"/>
+  <rect x="35" y="58" width="2" height="10" fill="#1677ff" opacity="0.6"/>
+  <rect x="40" y="58" width="2" height="10" fill="#1677ff" opacity="0.6"/>
+</svg>

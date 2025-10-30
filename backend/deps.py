@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from typing import Optional
 
 from backend.db.session import AppSessionLocal, OesSessionLocal
-from backend.db.models import User
+from backend.db.models import User, Role
 from backend.core.auth import decode_token
 
 security = HTTPBearer(auto_error=False)
@@ -85,5 +85,15 @@ def get_current_active_user(current_user: User = Depends(get_current_user)) -> U
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is inactive"
+        )
+    return current_user
+
+
+def require_supervisor(current_user: User = Depends(get_current_active_user)) -> User:
+    """Require supervisor role to access certain endpoints."""
+    if current_user.role != Role.supervisor:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Supervisor access required"
         )
     return current_user

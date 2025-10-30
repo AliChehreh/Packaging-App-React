@@ -1,5 +1,6 @@
 // src/pages/Orders.jsx — use Ant Design Collapse for Boxes
 import { useState, useEffect, useCallback } from "react";
+import { useLocation } from "react-router-dom";
 import {
   Input,
   Button,
@@ -301,6 +302,7 @@ function AddBoxModal({ visible, onClose, packId, onBoxAdded }) {
 }
 
 export default function Orders() {
+  const location = useLocation();
   const [mode, setMode] = useState("scan");
   const [orderNo, setOrderNo] = useState("");
   const [loading, setLoading] = useState(false);
@@ -311,6 +313,16 @@ export default function Orders() {
 
   // Calculate isComplete early
   const isComplete = pack?.header?.status === "complete";
+
+  // Handle URL parameters for auto-loading orders
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const orderParam = searchParams.get('order');
+    if (orderParam && orderParam !== orderNo) {
+      // Auto-trigger order loading using the existing handleScan function
+      handleScan(orderParam);
+    }
+  }, [location.search]);
 
   // Keyboard shortcuts for pack mode
   useEffect(() => {
