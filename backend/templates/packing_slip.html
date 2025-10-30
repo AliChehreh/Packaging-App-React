@@ -309,6 +309,7 @@
             color: #333;
             display: block;
             margin-top: 1px;
+            min-height: 14px; /* reserve space even when empty */
         }
         
         /* Column widths */
@@ -567,9 +568,7 @@
                     <td class="col-qty"></td>
                     <td class="col-code">
                         {{ group.product_code }}
-                        {% if group.product_tag %}
                         <span class="product-tag">{{ group.product_tag }}</span>
-                        {% endif %}
                     </td>
                     <td class="col-dims">{{ group.length_in|format_dim }} x {{ group.height_in|format_dim }}</td>
                     <td class="col-finish">{{ group.finish }}</td>

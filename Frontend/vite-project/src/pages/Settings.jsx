@@ -96,9 +96,14 @@ function Settings() {
     message.info('Settings reset to defaults');
   };
 
-  // Tab items based on user role
-  const tabItems = [
-    {
+  // Feature flag: hide Printer Settings tab (keep code for future reuse)
+  const SHOW_PRINTER_TAB = false;
+
+  // Build tabs conditionally
+  const tabItems = [];
+
+  if (SHOW_PRINTER_TAB) {
+    tabItems.push({
       key: 'printers',
       label: (
         <span>
@@ -191,8 +196,8 @@ function Settings() {
           </Card>
         </div>
       ),
-    },
-  ];
+    });
+  }
 
   // Add User Management tab for supervisors
   if (isSupervisor(user?.role)) {
@@ -216,7 +221,7 @@ function Settings() {
       </Title>
       
       <Tabs
-        defaultActiveKey="printers"
+        defaultActiveKey={tabItems[0]?.key}
         items={tabItems}
         size="large"
         style={{

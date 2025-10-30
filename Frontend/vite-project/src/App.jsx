@@ -201,12 +201,12 @@ function Shell() {
         >
           <Routes>
             <Route path="/login" element={<Login />} />
-            <Route path="/" element={<Navigate to="/packs" replace />} />
+            <Route path="/" element={<Navigate to="/orders" replace />} />
             <Route path="/packs" element={<Packs />} />
             <Route path="/orders" element={<Orders />} />
             <Route path="/cartons" element={<Cartons />} />
             <Route path="/settings" element={<Settings />} />
-            <Route path="*" element={<Navigate to="/packs" replace />} />
+            <Route path="*" element={<Navigate to="/orders" replace />} />
           </Routes>
         </Content>
       </Layout>
@@ -227,7 +227,7 @@ function ProtectedShell() {
   }
 
   if (isAuthenticated && pathname === "/login") {
-    return <Navigate to="/packs" replace />;
+    return <Navigate to="/orders" replace />;
   }
 
   return <Shell />;

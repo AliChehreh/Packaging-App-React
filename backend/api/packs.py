@@ -658,12 +658,19 @@ def preview_html_packing_slip(pack_id: int, db: Session = Depends(get_db), curre
         template = env.get_template('packing_slip.html')
         
         # Group items for display (same logic as PDF generation)
-        from backend.services.report_html import group_items_for_display, load_assets_as_base64
+        from backend.services.report_html import (
+            group_items_for_display,
+            load_assets_as_base64,
+            generate_barcode_base64,
+        )
         
         grouped_items = group_items_for_display(data.get('items', []))
         
         # Load assets as base64
         assets = load_assets_as_base64()
+
+        # Generate same barcode image used by PDF version
+        barcode_data_uri = generate_barcode_base64(str(data.get('order_no') or ''))
         
         # Calculate total pages
         total_pages = 1
@@ -676,6 +683,7 @@ def preview_html_packing_slip(pack_id: int, db: Session = Depends(get_db), curre
             'current_page': current_page,
             'total_pages': total_pages,
             'assets': assets,  # Include base64 assets
+            'barcode_data_uri': barcode_data_uri,
         }
         
         # Render HTML

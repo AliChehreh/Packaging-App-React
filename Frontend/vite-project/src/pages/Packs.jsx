@@ -38,7 +38,7 @@ function Packs() {
   const [packs, setPacks] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedDate, setSelectedDate] = useState(null); // Start with no date to show all packs
+  const [selectedDate, setSelectedDate] = useState(dayjs()); // Default to today on page load
   const [searchInput, setSearchInput] = useState('');
 
   // Check if user is supervisor
