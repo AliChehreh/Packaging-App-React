@@ -1,8 +1,19 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+import logging
 from backend.core.config import get_settings
 from backend.api import orders , cartons, packs, health, auth, users
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()  # This outputs to console/terminal
+    ]
+)
+
 settings = get_settings()
 
 app = FastAPI(title="Packaging App Backend")

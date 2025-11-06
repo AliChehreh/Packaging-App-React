@@ -13,6 +13,8 @@ from datetime import datetime, date, timedelta
 from backend.db.session import get_app_session as get_db
 from backend.db import models , oes_read
 from backend.services import pack_view
+from backend.services import ups_service
+from backend.core.config import get_settings
 from backend.deps import get_current_active_user, require_supervisor
 
 router = APIRouter(prefix="/api/pack", tags=["pack"])
@@ -179,6 +181,133 @@ def reopen_pack(
     db.commit()
     
     return {"message": "Pack reopened successfully", "pack_id": pack_id, "status": "in_progress"}
+
+
+@router.post("/{pack_id}/ups-rate")
+def get_ups_rate(
+    pack_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_supervisor)
+):
+    """
+    Get UPS shipping rate for a completed pack.
+    Requires supervisor role.
+    Returns negotiated rates based on the pack's service level.
+    """
+    # Verify pack exists and is completed
+    pack = db.query(models.Pack).filter(models.Pack.id == pack_id).first()
+    if not pack:
+        raise HTTPException(404, "Pack not found")
+    
+    if pack.status != 'complete':
+        raise HTTPException(400, "Pack must be completed to get UPS rates")
+    
+    # Get settings
+    settings = get_settings()
+    
+    # Validate UPS configuration
+    if not settings.UPS_CLIENT_ID or not settings.UPS_CLIENT_SECRET:
+        raise HTTPException(500, "UPS API credentials not configured")
+    
+    if not settings.UPS_ACCOUNT_NUMBER:
+        raise HTTPException(500, "UPS account number not configured")
+    
+    # Validate ship-from address
+    if not all([
+        settings.UPS_SHIP_FROM_NAME,
+        settings.UPS_SHIP_FROM_ADDRESS1,
+        settings.UPS_SHIP_FROM_CITY,
+        settings.UPS_SHIP_FROM_PROVINCE,
+        settings.UPS_SHIP_FROM_POSTAL_CODE
+    ]):
+        raise HTTPException(500, "UPS ship-from address not fully configured")
+    
+    try:
+        # Get pack snapshot with boxes
+        pack_snapshot = pack_view.get_pack_snapshot(db, pack_id)
+        
+        if not pack_snapshot.get("boxes"):
+            raise HTTPException(400, "Pack has no boxes")
+        
+        # Get order number and fetch OES data for ship-to address and service level
+        order_no = pack_snapshot["header"]["order_no"]
+        oes_header, _ = oes_read.fetch_order_from_oes(order_no)
+        
+        if not oes_header:
+            raise HTTPException(404, f"Order {order_no} not found in OES")
+        
+        # Build ship-to address from OES data
+        ship_to_address = {
+            "ship_name": oes_header.get("ship_name", ""),
+            "ship_address1": oes_header.get("ship_address1", ""),
+            "ship_address2": oes_header.get("ship_address2"),
+            "ship_city": oes_header.get("ship_city", ""),
+            "ship_province": oes_header.get("ship_province", ""),
+            "ship_postal_code": oes_header.get("ship_postal_code", ""),
+            "ship_country": oes_header.get("ship_country", "US")
+        }
+        
+        # Get service level from OES
+        service_level = oes_header.get("ServiceLevel")
+        
+        # Build ship-from address from config
+        ship_from_address = {
+            "name": settings.UPS_SHIP_FROM_NAME,
+            "address1": settings.UPS_SHIP_FROM_ADDRESS1,
+            "address2": settings.UPS_SHIP_FROM_ADDRESS2,
+            "city": settings.UPS_SHIP_FROM_CITY,
+            "province": settings.UPS_SHIP_FROM_PROVINCE,
+            "postal_code": settings.UPS_SHIP_FROM_POSTAL_CODE,
+            "country": settings.UPS_SHIP_FROM_COUNTRY
+        }
+        
+        # Prepare boxes data for UPS service
+        boxes_for_ups = []
+        for box in pack_snapshot["boxes"]:
+            # Get dimensions - prefer custom, fall back to carton type dimensions
+            length = box.get("custom_l_in")
+            width = box.get("custom_w_in")
+            height = box.get("custom_h_in")
+            
+            # If custom dimensions not available, fetch from carton type
+            if not all([length, width, height]):
+                carton_type_id = box.get("carton_type_id")
+                if carton_type_id:
+                    carton = db.get(models.CartonType, carton_type_id)
+                    if carton:
+                        length = length or getattr(carton, 'length_in', None)
+                        width = width or getattr(carton, 'width_in', None)
+                        height = height or getattr(carton, 'height_in', None)
+            
+            boxes_for_ups.append({
+                "box_no": box.get("box_no"),
+                "custom_l_in": length,
+                "custom_w_in": width,
+                "custom_h_in": height,
+                "weight_lbs": box.get("weight_lbs"),
+                "weight_entered": box.get("weight_entered")
+            })
+        
+        # Call UPS service
+        use_production = settings.UPS_USE_PRODUCTION
+        rate_response = ups_service.get_ups_rate(
+            pack_id=pack_id,
+            pack_boxes=boxes_for_ups,
+            ship_to_address=ship_to_address,
+            service_level=service_level,
+            ups_account_number=settings.UPS_ACCOUNT_NUMBER,
+            ship_from_address=ship_from_address,
+            use_production=use_production
+        )
+        
+        return rate_response
+        
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Failed to get UPS rate: {str(e)}")
 
 
 @router.get("/{pack_id}")

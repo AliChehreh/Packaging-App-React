@@ -27,7 +27,7 @@ import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { isSupervisor } from '../utils/roles';
-import { getCompletedPacks, reopenPack, downloadPackingSlip } from '../api/packs';
+import { getCompletedPacks, reopenPack, downloadPackingSlip, getUPSRate } from '../api/packs';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -83,6 +83,7 @@ function Packs() {
   }, [searchInput]);
 
   const [reopenModal, setReopenModal] = useState({ visible: false, packId: null, orderNo: null });
+  const [upsRateModal, setUpsRateModal] = useState({ visible: false, packId: null, loading: false, rateData: null, error: null });
 
   const handleModifyPack = async (packId, orderNo) => {
     setReopenModal({ visible: true, packId, orderNo });
@@ -113,6 +114,21 @@ function Packs() {
     } catch (error) {
       message.error(error.message || 'Failed to download packing slip');
     }
+  };
+
+  const handleGetUPSRate = async (packId) => {
+    setUpsRateModal({ visible: true, packId, loading: true, rateData: null, error: null });
+    try {
+      const rateData = await getUPSRate(packId);
+      setUpsRateModal({ visible: true, packId, loading: false, rateData, error: null });
+    } catch (error) {
+      setUpsRateModal({ visible: true, packId, loading: false, rateData: null, error: error.message });
+      message.error(error.message || 'Failed to get UPS rate');
+    }
+  };
+
+  const handleCloseUPSRateModal = () => {
+    setUpsRateModal({ visible: false, packId: null, loading: false, rateData: null, error: null });
   };
 
   const columns = [
@@ -230,6 +246,23 @@ function Packs() {
               Print
             </Button>
           </Tooltip>
+          
+          {record.ship_by === 'UPS' && (
+            <Tooltip title="Get UPS Rate">
+              <Button
+                size="small"
+                icon={<InboxOutlined />}
+                onClick={() => handleGetUPSRate(record.pack_id)}
+                style={{
+                  background: 'linear-gradient(135deg, #ff6b35 0%, #f7931e 100%)',
+                  borderColor: '#ff6b35',
+                  color: 'white',
+                }}
+              >
+                UPS Rate
+              </Button>
+            </Tooltip>
+          )}
           
           <Dropdown
             menu={{
@@ -383,6 +416,115 @@ function Packs() {
           <p>
             This will change the pack status from 'complete' back to 'in progress' and make it available for modification.
           </p>
+        </Modal>
+
+        {/* UPS Rate Modal */}
+        <Modal
+          title="UPS Shipping Rate"
+          open={upsRateModal.visible}
+          onCancel={handleCloseUPSRateModal}
+          footer={[
+            <Button key="close" onClick={handleCloseUPSRateModal}>
+              Close
+            </Button>
+          ]}
+          width={800}
+        >
+          {upsRateModal.loading && (
+            <div style={{ textAlign: 'center', padding: '40px' }}>
+              <Spin size="large" />
+              <p style={{ marginTop: '16px' }}>Fetching UPS rate...</p>
+            </div>
+          )}
+          
+          {upsRateModal.error && (
+            <div style={{ padding: '20px' }}>
+              <Text type="danger">{upsRateModal.error}</Text>
+            </div>
+          )}
+          
+          {upsRateModal.rateData && !upsRateModal.loading && !upsRateModal.error && (
+            <div>
+              {upsRateModal.rateData.RateResponse?.RatedShipment ? (
+                (Array.isArray(upsRateModal.rateData.RateResponse.RatedShipment) 
+                  ? upsRateModal.rateData.RateResponse.RatedShipment 
+                  : [upsRateModal.rateData.RateResponse.RatedShipment]
+                ).map((shipment, idx) => {
+                  const service = shipment.Service || {};
+                  const totalCharges = shipment.NegotiatedRateCharges?.TotalCharge || shipment.TotalCharges || {};
+                  const transportationCharges = shipment.NegotiatedRateCharges?.TotalCharge || shipment.TransportationCharges || {};
+                  const serviceOptionsCharges = shipment.ServiceOptionsCharges || {};
+                  const billingWeight = shipment.BillingWeight || {};
+                  
+                  return (
+                    <div key={idx} style={{ marginBottom: '24px' }}>
+                      <Card 
+                        title={
+                          <div>
+                            <Text strong style={{ fontSize: '16px' }}>
+                              {service.Description || `Service ${service.Code || ''}`}
+                            </Text>
+                            {service.Code && (
+                              <Text type="secondary" style={{ marginLeft: '8px', fontSize: '14px' }}>
+                                (Code: {service.Code})
+                              </Text>
+                            )}
+                          </div>
+                        }
+                        style={{ marginBottom: '16px' }}
+                      >
+                        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                          <div>
+                            <Text strong>Total Charges: </Text>
+                            <Text style={{ fontSize: '18px', color: '#1677ff', fontWeight: 'bold' }}>
+                              {totalCharges.CurrencyCode || 'USD'} {totalCharges.MonetaryValue || '0.00'}
+                            </Text>
+                          </div>
+                          
+                          <div>
+                            <Text strong>Transportation Charges: </Text>
+                            <Text>
+                              {transportationCharges.CurrencyCode || 'USD'} {transportationCharges.MonetaryValue || '0.00'}
+                            </Text>
+                          </div>
+                          
+                          {serviceOptionsCharges.MonetaryValue && parseFloat(serviceOptionsCharges.MonetaryValue) > 0 && (
+                            <div>
+                              <Text strong>Service Options Charges: </Text>
+                              <Text>
+                                {serviceOptionsCharges.CurrencyCode || 'USD'} {serviceOptionsCharges.MonetaryValue}
+                              </Text>
+                            </div>
+                          )}
+                          
+                          {billingWeight.Weight && (
+                            <div>
+                              <Text strong>Billing Weight: </Text>
+                              <Text>
+                                {billingWeight.Weight} {billingWeight.UnitOfMeasurement?.Code || 'LBS'}
+                              </Text>
+                            </div>
+                          )}
+                          
+                          {shipment.NegotiatedRateCharges && (
+                            <div style={{ marginTop: '8px', padding: '8px', background: '#f0f8ff', borderRadius: '4px' }}>
+                              <Text type="secondary" style={{ fontSize: '12px' }}>
+                                ✓ Negotiated rates applied
+                              </Text>
+                            </div>
+                          )}
+                        </Space>
+                      </Card>
+                    </div>
+                  );
+                })
+              ) : (
+                <div style={{ padding: '20px', textAlign: 'center' }}>
+                  <Text type="secondary">No rate information available in response</Text>
+                </div>
+              )}
+            </div>
+          )}
         </Modal>
       </Card>
     </div>

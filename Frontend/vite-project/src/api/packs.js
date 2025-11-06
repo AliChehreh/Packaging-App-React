@@ -273,3 +273,28 @@ export async function reopenPack(packId) {
     throw new Error(msg);
   }
 }
+
+export async function getUPSRate(packId) {
+  try {
+    const response = await axios.post(`${API_BASE}/pack/${packId}/ups-rate`);
+    return response.data;
+  } catch (error) {
+    let msg = "Failed to get UPS rate";
+    if (error.response?.status === 401) {
+      msg = "Authentication required. Please log in again.";
+    } else if (error.response?.status === 403) {
+      msg = "Access denied. Supervisor role required.";
+    } else if (error.response?.status === 400) {
+      msg = error.response.data?.detail || "Invalid request. Please check pack data.";
+    } else if (error.response?.status === 404) {
+      msg = error.response.data?.detail || "Pack or order not found.";
+    } else if (error.response?.status === 500) {
+      msg = error.response.data?.detail || "Server error. UPS API may not be configured.";
+    } else if (error.response?.data?.detail) {
+      msg = error.response.data.detail;
+    } else if (error.message) {
+      msg = error.message;
+    }
+    throw new Error(msg);
+  }
+}
