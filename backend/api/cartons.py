@@ -17,7 +17,7 @@ class CartonIn(BaseModel):
     length_in: int | None = None
     width_in: int | None = None
     height_in: int | None = None
-    max_weight_lb: int = Field(default=40, ge=1)
+    max_weight_lb: int = Field(default=99, ge=1)
     style: str | None = Field(default=None, max_length=20)
     vendor: str | None = Field(default=None, max_length=64)
     minimum_stock: int = Field(default=0, ge=0)

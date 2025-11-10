@@ -384,6 +384,14 @@ export default function Orders() {
     }
   }, [pack]);
 
+  const boxHasLine = useCallback(
+    (boxId, lineId) => {
+      const box = pack?.boxes?.find((b) => b.id === boxId);
+      return box?.items?.some((item) => item.order_line_id === lineId) ?? false;
+    },
+    [pack]
+  );
+
   const handleRemoveItem = useCallback(async (boxId, orderLineId, qty = 1) => {
     try {
       const snap = await removeItemFromBox(pack.header.pack_id, boxId, orderLineId, qty);
@@ -629,9 +637,12 @@ export default function Orders() {
       if (!activeBoxId) return message.info("Select a box first");
 
       try {
-        await removeItemFromBox(packId, activeBoxId, lineId, 1);
+    if (!boxHasLine(activeBoxId, lineId)) {
+      return message.info("The selected box does not contain this line.");
+    }
+
+    const snap = await removeItemFromBox(packId, activeBoxId, lineId, 1);
         message.success("1 unit removed");
-        const snap = await getPackSnapshot(packId);
         setPack(snap);
       } catch (err) {
         message.error(err.response?.data?.detail || err.message);
@@ -658,17 +669,28 @@ export default function Orders() {
 
     async function handleRemoveAll(lineId, packedQty) {
       if (isComplete) return;
-      if (!activeBoxId) return message.info("Select a box first");
       if (packedQty <= 0) return message.info("Nothing packed to remove");
 
       try {
-        // Remove all packed items one by one
-        for (let i = 0; i < packedQty; i++) {
-          await removeItemFromBox(packId, activeBoxId, lineId, 1);
+        let currentSnap = pack;
+        let totalRemoved = 0;
+        const packId = currentSnap.header.pack_id;
+
+        for (const box of currentSnap.boxes) {
+          const item = box.items.find((it) => it.order_line_id === lineId);
+          if (item && item.qty > 0) {
+            const result = await removeItemFromBox(packId, box.id, lineId, item.qty);
+            totalRemoved += item.qty;
+            currentSnap = result;
+          }
         }
-        message.success(`${packedQty} units removed`);
-        const snap = await getPackSnapshot(packId);
-        setPack(snap);
+
+        if (totalRemoved === 0) {
+          return message.info("No packed units found for this line.");
+        }
+
+        setPack(currentSnap);
+        message.success(`${totalRemoved} units removed across all boxes`);
       } catch (err) {
         message.error(err.response?.data?.detail || err.message);
       }
@@ -1127,7 +1149,12 @@ export default function Orders() {
                            danger
                            icon={<MinusOutlined />}
                            onClick={() => handleRemoveFromBox(record.id)} 
-                           disabled={record.packed_qty <= 0 || isComplete || !activeBoxId}
+                           disabled={
+                             record.packed_qty <= 0 ||
+                             isComplete ||
+                             !activeBoxId ||
+                             !boxHasLine(activeBoxId, record.id)
+                           }
                            style={{
                              borderRadius: '4px',
                              display: 'flex',
@@ -1183,7 +1210,7 @@ export default function Orders() {
                            danger
                            icon={<DoubleLeftOutlined />}
                            onClick={() => handleRemoveAll(record.id, record.packed_qty)} 
-                           disabled={record.packed_qty <= 0 || isComplete || !activeBoxId}
+                          disabled={record.packed_qty <= 0 || isComplete}
                            style={{
                              borderRadius: '4px',
                              display: 'flex',
@@ -1191,10 +1218,10 @@ export default function Orders() {
                              justifyContent: 'center',
                              minWidth: '28px',
                              height: '24px',
-                             background: (record.packed_qty <= 0 || isComplete || !activeBoxId) ? '#d9d9d9' : '#ff7875',
-                             borderColor: (record.packed_qty <= 0 || isComplete || !activeBoxId) ? '#d9d9d9' : '#ff7875',
+                            background: (record.packed_qty <= 0 || isComplete) ? '#d9d9d9' : '#ff7875',
+                            borderColor: (record.packed_qty <= 0 || isComplete) ? '#d9d9d9' : '#ff7875',
                              border: 'none',
-                             color: (record.packed_qty <= 0 || isComplete || !activeBoxId) ? '#999' : 'white'
+                            color: (record.packed_qty <= 0 || isComplete) ? '#999' : 'white'
                            }}
                          />
                        </Tooltip>
@@ -1348,6 +1375,12 @@ export default function Orders() {
               <Collapse multiple>
                 {pack.boxes.map((b) => {
                 const totalQty = b.items.reduce((sum, it) => sum + it.qty, 0);
+                const hasWeight = (
+                  b.weight_lbs !== null && b.weight_lbs !== undefined
+                ) || (
+                  b.weight_entered !== null && b.weight_entered !== undefined
+                );
+                const canPrintBoxLabel = totalQty > 0 && hasWeight;
                 const canDelete = !isComplete && b.items.length === 0;
                 const header = (
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: '100%' }}>
@@ -1419,32 +1452,33 @@ export default function Orders() {
                           />
                         </Tooltip>
                       )}
-                      {isComplete && totalQty > 0 && (
-                        <Tooltip title="Print Box Label">
-                          <PrinterOutlined
-                            style={{ 
-                              color: "#52c41a", 
-                              fontSize: 18,
-                              cursor: 'pointer',
-                              padding: '4px',
-                              borderRadius: '4px',
-                              transition: 'all 0.2s ease'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.target.style.background = '#f6ffed';
-                              e.target.style.transform = 'scale(1.1)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.target.style.background = 'transparent';
-                              e.target.style.transform = 'scale(1)';
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handlePrintBoxLabel(b.id);
-                            }}
-                          />
-                        </Tooltip>
-                      )}
+                      <Tooltip title={canPrintBoxLabel ? "Print Box Label" : "Add weight and items to enable printing"}>
+                        <PrinterOutlined
+                          style={{ 
+                            color: canPrintBoxLabel ? "#52c41a" : "#d9d9d9", 
+                            fontSize: 18,
+                            cursor: canPrintBoxLabel ? 'pointer' : 'not-allowed',
+                            padding: '4px',
+                            borderRadius: '4px',
+                            transition: 'all 0.2s ease'
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!canPrintBoxLabel) return;
+                            e.target.style.background = '#f6ffed';
+                            e.target.style.transform = 'scale(1.1)';
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!canPrintBoxLabel) return;
+                            e.target.style.background = 'transparent';
+                            e.target.style.transform = 'scale(1)';
+                          }}
+                          onClick={(e) => {
+                            if (!canPrintBoxLabel) return;
+                            e.stopPropagation();
+                            handlePrintBoxLabel(b.id);
+                          }}
+                        />
+                      </Tooltip>
                     </div>
                   </div>
                 );

@@ -32,7 +32,7 @@ class CartonType(Base):
     length_in: Mapped[float | None] = mapped_column(DECIMAL(10, 3), nullable=True)
     width_in: Mapped[float | None] = mapped_column(DECIMAL(10, 3), nullable=True)
     height_in: Mapped[float | None] = mapped_column(DECIMAL(10, 3), nullable=True)
-    max_weight_lb: Mapped[int] = mapped_column(Integer, default=40)
+    max_weight_lb: Mapped[int] = mapped_column(Integer, default=99)
 
     style: Mapped[str | None] = mapped_column(String(20), nullable=True)
     vendor: Mapped[str | None] = mapped_column(String(64), nullable=True)

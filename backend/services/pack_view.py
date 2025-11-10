@@ -477,6 +477,8 @@ def delete_box_if_empty(db: Session, pack_id: int, box_id: int):
         raise ValueError(f"Cannot delete Box {box_id}: it is not empty")
 
     db.delete(box)
+    db.flush()
+    _renumber_boxes(db, pack_id)
     db.commit()
 
 # ---------------------------------------------------------------------
@@ -529,6 +531,27 @@ def _next_box_no(db: Session, pack_id: int) -> int:
     """Get the next box number for a pack."""
     q = select(func.coalesce(func.max(models.PackBox.box_no), 0)).where(models.PackBox.pack_id == pack_id)
     return int(db.execute(q).scalar_one()) + 1
+
+
+def _renumber_boxes(db: Session, pack_id: int) -> None:
+    """
+    Ensure boxes are numbered sequentially after deletions.
+    """
+    boxes = (
+        db.query(models.PackBox)
+        .filter(models.PackBox.pack_id == pack_id)
+        .order_by(func.coalesce(models.PackBox.box_no, 2147483647), models.PackBox.id)
+        .all()
+    )
+
+    changed = False
+    for idx, box in enumerate(boxes, start=1):
+        if box.box_no != idx:
+            box.box_no = idx
+            changed = True
+
+    if changed:
+        db.flush()
 
 
 def duplicate_box(db: Session, pack_id: int, box_id: int):

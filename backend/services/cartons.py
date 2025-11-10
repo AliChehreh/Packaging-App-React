@@ -14,13 +14,13 @@ def list_cartons(db: Session, *, active_only: bool = True) -> list[CartonType]:
 
 def create_carton(db: Session, *, name: Optional[str], length_in: Optional[int],
                   width_in: Optional[int], height_in: Optional[int],
-                  max_weight_lb: int = 40, style: Optional[str] = None,
+                  max_weight_lb: int = 99, style: Optional[str] = None,
                   vendor: Optional[str] = None, minimum_stock: int = 0,
                   active: bool = True) -> CartonType:
     c = CartonType(
         name=name,
         length_in=length_in, width_in=width_in, height_in=height_in,
-        max_weight_lb=int(max_weight_lb) if max_weight_lb is not None else 40,
+        max_weight_lb=int(max_weight_lb) if max_weight_lb is not None else 99,
         style=style, vendor=vendor,
         minimum_stock=int(minimum_stock or 0),
         active=bool(active),

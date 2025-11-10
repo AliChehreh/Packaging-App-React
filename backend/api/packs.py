@@ -420,7 +420,7 @@ def create_box(pack_id: int, body: CreateBoxIn, db: Session = Depends(get_db), c
         if not ct or not getattr(ct, "active", True):
             raise HTTPException(400, "Invalid or inactive carton_type_id")
         pb.carton_type_id = ct.id
-        pb.max_weight_lb = int(body.max_weight_lb or getattr(ct, "max_weight_lb", 40))
+        pb.max_weight_lb = int(body.max_weight_lb or getattr(ct, "max_weight_lb", 99))
     else:
         if not all([body.length_in, body.width_in, body.height_in]):
             raise HTTPException(400, "Provide either carton_type_id or custom length/width/height")
@@ -429,7 +429,7 @@ def create_box(pack_id: int, body: CreateBoxIn, db: Session = Depends(get_db), c
         pb.custom_l_in = int(body.length_in)
         pb.custom_w_in = int(body.width_in)
         pb.custom_h_in = int(body.height_in)
-        pb.max_weight_lb = int(body.max_weight_lb or 40)
+        pb.max_weight_lb = int(body.max_weight_lb or 99)
 
     for _ in range(3):
         pb.box_no = _next_box_no(db, pack_id)
