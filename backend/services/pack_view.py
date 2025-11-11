@@ -710,6 +710,8 @@ def get_packing_slip_data(pack_id: int):
     if not order_info:
         raise ValueError(f"OES order {order_no} not found.")
 
+    ship_date = order_info.get("ship_by_date") or datetime.now().strftime("%Y-%m-%d")
+
     # --- 2. Get packing items (from app DB) ---
     query_items_local = text("""
         SELECT
@@ -756,6 +758,7 @@ def get_packing_slip_data(pack_id: int):
 
     # --- 4. Merge into final data structure ---
     slip = dict(order_info)
+    slip["ship_by_date"] = ship_date
     slip["boxes"] = boxes
     slip["items"] = items
     slip["pack_id"] = pack_id
